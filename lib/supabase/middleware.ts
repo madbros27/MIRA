@@ -37,7 +37,9 @@ const ADMIN_LOGIN = `${ADMIN_PREFIX}/login`
 
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
-
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
   // Without credentials there is nothing to protect — send everyone to the
   // setup page, which explains what to configure.
   if (!isSupabaseConfigured()) {
