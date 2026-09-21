@@ -870,7 +870,6 @@ revoke all on function public.notify_issue_change() from public;
 revoke all on function public.notify_comment() from public;
 revoke all on function public.archive_comment_revision() from public;
 revoke all on function public.set_updated_at() from public;
-revoke all on function public.claim_pending_invites(uuid, text) from public;
 
 -- ---------------------------------------------------------------------------
 -- RPC: notifications
@@ -922,6 +921,8 @@ begin
   return v_count;
 end;
 $$;
+
+revoke all on function public.claim_pending_invites(uuid, text) from public;
 
 create or replace function public.accept_invite(p_token text)
 returns uuid

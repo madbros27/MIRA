@@ -504,7 +504,10 @@ begin
   -- Suspending globally also parks every workspace seat, so RLS stops
   -- resolving capabilities for them immediately.
   update public.workspace_members
-     set status = case when p_active then 'active' else 'suspended' end
+   set status = case
+     when p_active then 'active'::public.member_status
+     else 'suspended'::public.member_status
+   end
    where user_id = p_user
      and status <> 'invited';
 
