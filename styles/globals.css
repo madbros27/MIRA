@@ -1,0 +1,363 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   MIRA design tokens
+   --------------------------------------------------------------------------
+   One source of truth for colour, elevation and radii. Components never
+   hardcode a hex value — they consume these tokens through Tailwind
+   (bg-surface, text-muted-foreground, ring-ring, ...).
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* Neutrals — a cool, very slightly blue-shifted grey ramp. */
+    --canvas: 228 33% 97%;
+    --background: 0 0% 100%;
+    --foreground: 226 30% 12%;
+
+    --surface: 0 0% 100%;
+    --surface-raised: 228 33% 99%;
+    --surface-sunken: 228 30% 95%;
+
+    --muted: 228 26% 95%;
+    --muted-foreground: 226 12% 44%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 226 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 30% 12%;
+
+    --border: 228 20% 89%;
+    --border-strong: 228 18% 80%;
+    --input: 228 20% 88%;
+
+    /* Brand — iris. Distinctive without drifting into "default bootstrap". */
+    --primary: 245 68% 56%;
+    --primary-hover: 245 68% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-subtle: 245 80% 96%;
+    --primary-subtle-foreground: 245 62% 42%;
+
+    --secondary: 228 26% 95%;
+    --secondary-foreground: 226 28% 20%;
+
+    --accent: 228 26% 94%;
+    --accent-foreground: 226 28% 18%;
+
+    /* Semantic */
+    --success: 158 72% 35%;
+    --success-subtle: 158 64% 94%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 33 92% 44%;
+    --warning-subtle: 38 94% 93%;
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 353 74% 50%;
+    --destructive-subtle: 353 88% 96%;
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 205 88% 45%;
+    --info-subtle: 205 90% 95%;
+
+    --ring: 245 68% 56%;
+
+    /* Chrome */
+    --sidebar: 226 32% 13%;
+    --sidebar-foreground: 228 24% 82%;
+    --sidebar-muted: 228 14% 58%;
+    --sidebar-accent: 226 30% 20%;
+    --sidebar-border: 226 26% 22%;
+
+    --radius: 0.625rem;
+
+    /* Layered, tinted shadows read as "crafted" rather than default. */
+    --shadow-xs: 0 1px 2px 0 hsl(226 30% 12% / 0.05);
+    --shadow-sm: 0 1px 2px 0 hsl(226 30% 12% / 0.06), 0 1px 3px 0 hsl(226 30% 12% / 0.06);
+    --shadow-md: 0 2px 4px -1px hsl(226 30% 12% / 0.06), 0 4px 12px -2px hsl(226 30% 12% / 0.08);
+    --shadow-lg: 0 4px 8px -2px hsl(226 30% 12% / 0.06), 0 12px 32px -4px hsl(226 30% 12% / 0.12);
+    --shadow-focus: 0 0 0 3px hsl(245 68% 56% / 0.22);
+  }
+
+  .dark {
+    --canvas: 226 28% 7%;
+    --background: 226 26% 9%;
+    --foreground: 228 28% 94%;
+
+    --surface: 226 24% 11%;
+    --surface-raised: 226 22% 14%;
+    --surface-sunken: 226 28% 8%;
+
+    --muted: 226 20% 17%;
+    --muted-foreground: 228 14% 64%;
+
+    --card: 226 24% 11%;
+    --card-foreground: 228 28% 94%;
+
+    --popover: 226 24% 13%;
+    --popover-foreground: 228 28% 94%;
+
+    --border: 226 18% 20%;
+    --border-strong: 226 16% 28%;
+    --input: 226 18% 22%;
+
+    --primary: 246 88% 68%;
+    --primary-hover: 246 88% 73%;
+    --primary-foreground: 246 60% 12%;
+    --primary-subtle: 245 45% 20%;
+    --primary-subtle-foreground: 245 90% 86%;
+
+    --secondary: 226 20% 18%;
+    --secondary-foreground: 228 24% 90%;
+
+    --accent: 226 20% 19%;
+    --accent-foreground: 228 24% 92%;
+
+    --success: 158 62% 46%;
+    --success-subtle: 158 44% 17%;
+    --success-foreground: 158 80% 8%;
+
+    --warning: 38 92% 58%;
+    --warning-subtle: 33 50% 18%;
+    --warning-foreground: 33 90% 10%;
+
+    --destructive: 353 80% 62%;
+    --destructive-subtle: 353 44% 20%;
+    --destructive-foreground: 353 90% 10%;
+
+    --info: 205 88% 62%;
+    --info-subtle: 205 44% 19%;
+
+    --ring: 246 88% 68%;
+
+    --sidebar: 226 30% 8%;
+    --sidebar-foreground: 228 22% 78%;
+    --sidebar-muted: 228 12% 54%;
+    --sidebar-accent: 226 22% 16%;
+    --sidebar-border: 226 20% 17%;
+
+    --shadow-xs: 0 1px 2px 0 hsl(226 40% 2% / 0.4);
+    --shadow-sm: 0 1px 2px 0 hsl(226 40% 2% / 0.5), 0 1px 3px 0 hsl(226 40% 2% / 0.4);
+    --shadow-md: 0 2px 4px -1px hsl(226 40% 2% / 0.5), 0 4px 12px -2px hsl(226 40% 2% / 0.45);
+    --shadow-lg: 0 4px 8px -2px hsl(226 40% 2% / 0.5), 0 12px 32px -4px hsl(226 40% 2% / 0.55);
+    --shadow-focus: 0 0 0 3px hsl(246 88% 68% / 0.3);
+  }
+
+  /* ------------------------------------------------------------------------
+     System Administrator portal.
+
+     The two portals share one deployment, so they must never be mistaken for
+     one another at a glance. Everything under /miraadmin sets
+     `data-portal="admin"`, which swaps the iris brand ramp for a warm copper
+     one and darkens the chrome to near-black. Component code is unchanged —
+     it keeps consuming the same tokens.
+     ------------------------------------------------------------------------ */
+  [data-portal='admin'] {
+    --primary: 22 88% 48%;
+    --primary-hover: 22 88% 42%;
+    --primary-foreground: 0 0% 100%;
+    --primary-subtle: 28 92% 95%;
+    --primary-subtle-foreground: 22 82% 36%;
+
+    --ring: 22 88% 48%;
+    --shadow-focus: 0 0 0 3px hsl(22 88% 48% / 0.24);
+
+    --canvas: 24 22% 96%;
+    --surface-sunken: 24 20% 93%;
+
+    --sidebar: 24 28% 9%;
+    --sidebar-foreground: 28 18% 80%;
+    --sidebar-muted: 26 10% 56%;
+    --sidebar-accent: 24 24% 16%;
+    --sidebar-border: 24 20% 18%;
+  }
+
+  .dark [data-portal='admin'],
+  [data-portal='admin'].dark {
+    --primary: 28 94% 60%;
+    --primary-hover: 28 94% 66%;
+    --primary-foreground: 24 70% 10%;
+    --primary-subtle: 24 48% 19%;
+    --primary-subtle-foreground: 30 94% 82%;
+
+    --ring: 28 94% 60%;
+    --shadow-focus: 0 0 0 3px hsl(28 94% 60% / 0.3);
+
+    --canvas: 24 20% 6%;
+    --background: 24 18% 8%;
+    --surface: 24 16% 10%;
+    --surface-raised: 24 14% 13%;
+    --surface-sunken: 24 20% 7%;
+
+    --sidebar: 24 22% 6%;
+    --sidebar-accent: 24 18% 14%;
+    --sidebar-border: 24 16% 15%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold tracking-[-0.015em];
+  }
+
+  /* Visible, on-brand focus for keyboard users only. */
+  :focus-visible {
+    @apply outline-none;
+    box-shadow: var(--shadow-focus);
+  }
+
+  /* Slim, unobtrusive scrollbars that match the theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border-strong));
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.55);
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Horizontal snap rail — the mobile Kanban board swipes between columns. */
+  .snap-rail {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .snap-rail > * {
+    scroll-snap-align: center;
+  }
+
+  @media (min-width: 768px) {
+    .snap-rail {
+      scroll-snap-type: none;
+    }
+  }
+
+  /* Skeleton shimmer used by every loading state. */
+  .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.12) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Markdown rendered in issue descriptions, comments and retro notes. */
+  .prose-mira {
+    @apply text-[0.9375rem] leading-relaxed text-foreground;
+  }
+  .prose-mira > * + * {
+    @apply mt-3;
+  }
+  .prose-mira h1 {
+    @apply mt-5 text-lg font-semibold;
+  }
+  .prose-mira h2 {
+    @apply mt-5 text-base font-semibold;
+  }
+  .prose-mira h3 {
+    @apply mt-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .prose-mira p {
+    @apply whitespace-pre-wrap;
+  }
+  .prose-mira a {
+    @apply font-medium text-primary underline underline-offset-2 hover:no-underline;
+  }
+  .prose-mira ul {
+    @apply list-disc space-y-1 pl-5;
+  }
+  .prose-mira ol {
+    @apply list-decimal space-y-1 pl-5;
+  }
+  .prose-mira blockquote {
+    @apply border-l-2 border-border-strong pl-4 italic text-muted-foreground;
+  }
+  .prose-mira code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8125rem];
+  }
+  .prose-mira pre {
+    @apply overflow-x-auto rounded-lg bg-surface-sunken p-3 text-[0.8125rem];
+  }
+  .prose-mira pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-mira table {
+    @apply w-full border-collapse text-sm;
+  }
+  .prose-mira th,
+  .prose-mira td {
+    @apply border border-border px-2.5 py-1.5 text-left;
+  }
+  .prose-mira th {
+    @apply bg-muted font-semibold;
+  }
+  .prose-mira hr {
+    @apply border-border;
+  }
+  .prose-mira img {
+    @apply max-w-full rounded-lg border border-border;
+  }
+  .prose-mira input[type='checkbox'] {
+    @apply mr-1.5 align-middle accent-[hsl(var(--primary))];
+  }
+}
