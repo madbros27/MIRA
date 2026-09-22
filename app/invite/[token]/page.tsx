@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 
 import { setActiveWorkspace } from '@/app/actions'
 import { Wordmark } from '@/components/layout/logo'
@@ -27,7 +28,12 @@ export default async function InvitePage({
   } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)
+    redirect(`/invite/${token}/setup`)
+  }
+
+  const inviteSetupCookie = (await cookies()).get('mira-invite-setup')
+  if (inviteSetupCookie?.value === '1') {
+    redirect(`/invite/${token}/setup`)
   }
 
   const { data: workspaceId, error } = await supabase.rpc('accept_invite', {

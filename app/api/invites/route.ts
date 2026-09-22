@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
 
   const inviteUrl = absoluteUrl(`/invite/${invite.token}`)
   const authRedirectUrl = absoluteUrl(
-   `/auth/callback?next=${encodeURIComponent(`/invite/${invite.token}`)}`
+    `/auth/callback?next=${encodeURIComponent(`/invite/${invite.token}`)}`
   )
 
   // Try to email the invitation. This needs the service-role key and only
@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
       redirectTo: authRedirectUrl,
     })
     if (inviteError) throw inviteError
+
     emailed = true
   } catch (caught) {
     emailError =

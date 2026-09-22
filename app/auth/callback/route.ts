@@ -47,9 +47,19 @@ export async function GET(request: NextRequest) {
         `${origin}/login?notice=auth-error&message=${encodeURIComponent(error.message)}`
       )
     }
-    return NextResponse.redirect(
+    const response = NextResponse.redirect(
       `${origin}${type === 'recovery' ? '/reset-password' : safeNext(next)}`
     )
+    if (type === 'invite') {
+      response.cookies.set('mira-invite-setup', '1', {
+        httpOnly: true,
+        maxAge: 60 * 60,
+        path: '/invite',
+        sameSite: 'lax',
+        secure: true,
+      })
+    }
+    return response
   }
 
   return NextResponse.redirect(`${origin}/login?notice=auth-error`)
