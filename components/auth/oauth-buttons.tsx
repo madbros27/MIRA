@@ -4,7 +4,7 @@ import * as React from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getTenantSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { getAppUrl } from '@/lib/supabase/env'
 import { errorMessage } from '@/lib/utils'
 
@@ -45,7 +45,7 @@ export function OAuthButtons({ next }: { next?: string }) {
 
   async function signIn(provider: 'google' | 'github') {
     setPending(provider)
-    const supabase = getSupabaseBrowserClient()
+    const supabase = getTenantSupabaseBrowserClient()
     const redirectTo = `${getAppUrl()}/auth/callback${
       next ? `?next=${encodeURIComponent(next)}` : ''
     }`

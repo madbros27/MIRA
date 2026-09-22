@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'That does not look like an email address' }, { status: 400 })
   }
 
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
   const {
     data: { user },
   } = await supabase.auth.getUser()

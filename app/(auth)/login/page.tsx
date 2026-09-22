@@ -11,7 +11,8 @@ import { Field, Input } from '@/components/ui/input'
 import { Separator, Skeleton } from '@/components/ui/primitives'
 import { LOGIN_ERRORS, type LoginErrorCode } from '@/lib/auth/constants'
 import { allowPublicSignup } from '@/lib/supabase/env'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getTenantSupabaseBrowserClient } from '@/lib/supabase/clients'
+import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 import { errorMessage } from '@/lib/utils'
 
 /**
@@ -61,7 +62,7 @@ function LoginForm() {
     setPending(true)
 
     try {
-      const supabase = getSupabaseBrowserClient()
+      const supabase = getTenantSupabaseBrowserClient()
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -86,6 +87,7 @@ function LoginForm() {
         return
       }
 
+      broadcastSessionMessage('tenant', { type: 'SIGNED_IN' })
       router.push(next)
       router.refresh()
     } catch (caught) {

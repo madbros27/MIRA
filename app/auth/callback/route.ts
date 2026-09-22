@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const supabase = await createSupabaseServerClient()
+  const portal = next === '/miraadmin' || next.startsWith('/miraadmin/') ? 'admin' : 'tenant'
+  const supabase = await createSupabaseServerClient(portal)
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)

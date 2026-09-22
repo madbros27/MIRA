@@ -8,7 +8,8 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { LOGIN_ERRORS, type LoginErrorCode } from '@/lib/auth/constants'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getAdminSupabaseBrowserClient } from '@/lib/supabase/clients'
+import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 import { errorMessage } from '@/lib/utils'
 
 /**
@@ -22,7 +23,7 @@ import { errorMessage } from '@/lib/utils'
 export function AdminLoginForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const supabase = getSupabaseBrowserClient()
+  const supabase = getAdminSupabaseBrowserClient()
 
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -88,6 +89,7 @@ export function AdminLoginForm() {
       }
 
       await supabase.rpc('admin_record_login')
+      broadcastSessionMessage('admin', { type: 'SIGNED_IN' })
 
       const next = params.get('next')
       router.replace(

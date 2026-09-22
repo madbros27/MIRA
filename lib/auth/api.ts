@@ -33,7 +33,7 @@ export type AdminApiContext = {
 export async function requireAdminApi(): Promise<
   { ok: true; context: AdminApiContext } | { ok: false; response: NextResponse }
 > {
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('admin')
 
   const {
     data: { user },

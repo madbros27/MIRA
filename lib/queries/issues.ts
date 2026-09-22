@@ -11,6 +11,7 @@ import {
   withDerivedFields,
 } from './shared'
 import { applyIssueFilter } from '@/lib/filters'
+import { broadcastDataInvalidated } from '@/lib/auth/session-bus'
 import type { IssueFilter, IssueSummary } from '@/lib/types/app'
 import type { IssuePriority, IssueRow, IssueType } from '@/lib/types/database'
 import { parseIssueKey, positionBetween } from '@/lib/utils'
@@ -236,6 +237,7 @@ export function useCreateIssue() {
     onSuccess: (issue) => {
       client.invalidateQueries({ queryKey: qk.issues(issue.project_id) })
       client.invalidateQueries({ queryKey: ['workspace-issues'] })
+      broadcastDataInvalidated('tenant', [qk.issue(issue.id), qk.issues(issue.project_id), ['workspace-issues']])
       if (issue.parent_id) {
         client.invalidateQueries({ queryKey: qk.subtasks(issue.parent_id) })
         client.invalidateQueries({ queryKey: qk.issue(issue.parent_id) })

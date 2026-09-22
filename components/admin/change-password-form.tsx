@@ -9,7 +9,7 @@ import { PageHeader } from './admin-ui'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/primitives'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getAdminSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { errorMessage } from '@/lib/utils'
 
 const MIN_LENGTH = 12
@@ -30,7 +30,7 @@ function assess(password: string) {
 
 export function ChangePasswordForm({ mustChange }: { mustChange: boolean }) {
   const router = useRouter()
-  const supabase = getSupabaseBrowserClient()
+  const supabase = getAdminSupabaseBrowserClient()
 
   const [password, setPassword] = React.useState('')
   const [confirm, setConfirm] = React.useState('')

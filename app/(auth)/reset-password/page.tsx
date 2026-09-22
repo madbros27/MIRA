@@ -7,7 +7,7 @@ import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getTenantSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { cn, errorMessage } from '@/lib/utils'
 
 const RULES = [
@@ -29,7 +29,7 @@ export default function ResetPasswordPage() {
   const [pending, setPending] = React.useState(false)
 
   React.useEffect(() => {
-    const supabase = getSupabaseBrowserClient()
+    const supabase = getTenantSupabaseBrowserClient()
     supabase.auth.getSession().then(({ data }) => {
       setStatus(data.session ? 'ready' : 'no-session')
     })
@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
 
     setPending(true)
     try {
-      const supabase = getSupabaseBrowserClient()
+      const supabase = getTenantSupabaseBrowserClient()
       const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) throw updateError
       await supabase.auth.signOut()

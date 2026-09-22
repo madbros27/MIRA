@@ -3,7 +3,8 @@ import 'server-only'
 /**
  * Server-side Supabase clients.
  *
- *   createSupabaseServerClient()  — acts as the signed-in user, RLS applies.
+ *   createSupabaseServerClient(portal) — acts as the signed-in user for the
+ *                                      selected portal; RLS applies.
  *                                   Use in Server Components, Route Handlers
  *                                   and Server Actions.
  *   createSupabaseAdminClient()   — service role, RLS bypassed. Only for
@@ -22,13 +23,35 @@ import {
 } from './env'
 import type { Database } from '@/lib/types/database'
 
-export async function createSupabaseServerClient() {
+export type Portal = 'admin' | 'tenant'
+
+const PORTAL_COOKIES = {
+  admin: {
+    name: 'mira-admin-session',
+    path: '/miraadmin',
+  },
+  tenant: {
+    name: 'mira-tenant-session',
+    path: '/',
+  },
+} as const
+
+export async function createSupabaseServerClient(portal: Portal) {
   const cookieStore = await cookies()
+  const cookie = PORTAL_COOKIES[portal]
 
   return createServerClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
+    cookieOptions: {
+      name: cookie.name,
+      path: cookie.path,
+      sameSite: 'lax',
+      secure: true,
+    },
     cookies: {
       getAll() {
-        return cookieStore.getAll()
+        return cookieStore.getAll().filter(({ name }) =>
+          name === cookie.name || name.startsWith(`${cookie.name}-`)
+        )
       },
       setAll(cookiesToSet) {
         try {
@@ -52,8 +75,8 @@ export function createSupabaseAdminClient() {
 }
 
 /** The current user's session user, or null. */
-export async function getSessionUser() {
-  const supabase = await createSupabaseServerClient()
+export async function getSessionUser(portal: Portal) {
+  const supabase = await createSupabaseServerClient(portal)
   const {
     data: { user },
   } = await supabase.auth.getUser()

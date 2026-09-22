@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 
 import { AdminShell } from '@/components/admin/admin-shell'
+import { SessionLifecycle } from '@/components/providers/session-lifecycle'
 import { requirePlatformAdmin } from '@/lib/auth/session'
 
 /**
@@ -37,6 +38,7 @@ export default async function AdminShellLayout({
     <AdminShell
       admin={{ name: admin.name, email: admin.email, userId: user.id }}
     >
+      <SessionLifecycle portal="admin" />
       {children}
     </AdminShell>
   )

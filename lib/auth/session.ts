@@ -38,7 +38,7 @@ export type PlatformAdminSession = {
 
 /** The signed-in System Administrator, or null for everyone else. */
 export async function getPlatformAdmin(): Promise<PlatformAdminSession | null> {
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('admin')
 
   const {
     data: { user },
@@ -66,7 +66,7 @@ export async function requirePlatformAdmin(
 ): Promise<PlatformAdminSession> {
   const session = await getPlatformAdmin()
   if (!session) {
-    const supabase = await createSupabaseServerClient()
+    const supabase = await createSupabaseServerClient('admin')
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -138,7 +138,7 @@ const MEMBERSHIP_SELECT = `
 export async function loadWorkspaceAccess(
   userId: string
 ): Promise<WorkspaceAccess[]> {
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
 
   const [membershipResult, ownerResult] = await Promise.all([
     supabase.from('workspace_members').select(MEMBERSHIP_SELECT).eq('user_id', userId),
@@ -236,7 +236,7 @@ async function resolveImpersonation(): Promise<{
   const sessionId = store.get(IMPERSONATION_COOKIE)?.value
   if (!sessionId) return null
 
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
   const { data } = await supabase
     .from('admin_impersonations')
     .select('id, workspace_id, expires_at, ended_at')
@@ -265,7 +265,7 @@ export async function getTenantContext(): Promise<
   | { status: 'unauthenticated' }
   | { status: 'platform-admin'; user: User }
 > {
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
 
   const {
     data: { user },
@@ -370,7 +370,7 @@ export async function requireTenantContext(next?: string): Promise<TenantContext
  * run — for instance when the account predates the migrations.
  */
 async function ensureProfile(user: User): Promise<Profile> {
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
 
   const { data } = await supabase
     .from('profiles')

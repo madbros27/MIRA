@@ -18,6 +18,7 @@ import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { can } from '@/lib/permissions'
 import { useUiStore } from '@/lib/store/ui-store'
 import { cn, displayName } from '@/lib/utils'
+import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 
 export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain' }) {
   const router = useRouter()
@@ -28,6 +29,7 @@ export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain
   async function signOut() {
     setSigningOut(true)
     await fetch('/auth/signout', { method: 'POST' })
+    broadcastSessionMessage('tenant', { type: 'SIGNED_OUT' })
     router.push('/login')
     router.refresh()
   }

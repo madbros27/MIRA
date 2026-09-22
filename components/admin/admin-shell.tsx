@@ -28,7 +28,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/menu'
 import { Avatar } from '@/components/ui/primitives'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getAdminSupabaseBrowserClient } from '@/lib/supabase/clients'
+import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 import { cn } from '@/lib/utils'
 
 type NavItem = {
@@ -217,7 +218,8 @@ function SidebarFooter({
 
   async function signOut() {
     setSigningOut(true)
-    await getSupabaseBrowserClient().auth.signOut()
+    await getAdminSupabaseBrowserClient().auth.signOut()
+    broadcastSessionMessage('admin', { type: 'SIGNED_OUT' })
     router.replace('/miraadmin/login')
     router.refresh()
   }

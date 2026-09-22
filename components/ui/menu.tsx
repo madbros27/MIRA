@@ -30,7 +30,11 @@ export function DropdownMenuContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
-        className={cn(surface, 'max-h-[min(24rem,70vh)] overflow-y-auto', className)}
+        className={cn(
+          surface,
+          'max-h-[min(320px,var(--radix-popper-available-height,320px))] overflow-y-auto overscroll-contain',
+          className
+        )}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>

@@ -9,7 +9,7 @@ import { OAuthButtons } from '@/components/auth/oauth-buttons'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { Separator, Skeleton } from '@/components/ui/primitives'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getTenantSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { allowPublicSignup, getAppUrl } from '@/lib/supabase/env'
 import { cn, errorMessage } from '@/lib/utils'
 
@@ -117,7 +117,7 @@ function SignupForm() {
 
     setPending(true)
     try {
-      const supabase = getSupabaseBrowserClient()
+      const supabase = getTenantSupabaseBrowserClient()
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,

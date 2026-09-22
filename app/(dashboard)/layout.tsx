@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { ImpersonationBanner } from '@/components/layout/impersonation-banner'
 import { WorkspaceProvider } from '@/components/providers/workspace-provider'
+import { SessionLifecycle } from '@/components/providers/session-lifecycle'
 import { getTenantContext } from '@/lib/auth/session'
 import type { WorkspaceWithAccess } from '@/lib/types/app'
 import type { Capability } from '@/lib/permissions/capabilities'
@@ -62,6 +63,7 @@ export default async function DashboardLayout({
           expiresAt={impersonation.expiresAt}
         />
       ) : null}
+      <SessionLifecycle portal="tenant" />
       <AppShell>{children}</AppShell>
     </WorkspaceProvider>
   )

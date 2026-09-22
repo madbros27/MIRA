@@ -20,7 +20,7 @@ export default async function InvitePage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('tenant')
 
   const {
     data: { user },

@@ -23,6 +23,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import type { User } from '@supabase/supabase-js'
 
 import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from './env'
+import { ADMIN_COOKIE, TENANT_COOKIE } from './portal'
 import {
   ADMIN_PREFIX,
   IMPERSONATION_COOKIE,
@@ -62,13 +63,26 @@ export async function updateSession(request: NextRequest) {
 
   let response = forward()
 
+  const adminPortal = isAdminPath(pathname)
+  const cookie = adminPortal
+    ? { name: ADMIN_COOKIE, path: '/miraadmin' }
+    : { name: TENANT_COOKIE, path: '/' }
+
   const supabase = createServerClient<Database>(
     getSupabaseUrl(),
     getSupabaseAnonKey(),
     {
+      cookieOptions: {
+        name: cookie.name,
+        path: cookie.path,
+        sameSite: 'lax',
+        secure: true,
+      },
       cookies: {
         getAll() {
-          return request.cookies.getAll()
+          return request.cookies.getAll().filter(({ name }) =>
+            name === cookie.name || name.startsWith(`${cookie.name}-`)
+          )
         },
         setAll(cookiesToSet) {
           for (const { name, value } of cookiesToSet) {
@@ -127,6 +141,17 @@ export async function updateSession(request: NextRequest) {
     if (isPublicPath(pathname)) return response
     const next = pathname === '/' ? undefined : pathname + request.nextUrl.search
     return redirectTo(tenantLoginUrl(undefined, next))
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_active')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profile && !profile.is_active) {
+    await supabase.auth.signOut()
+    return redirectTo(tenantLoginUrl('suspended'))
   }
 
   // A System Administrator has no tenant of their own. The single exception

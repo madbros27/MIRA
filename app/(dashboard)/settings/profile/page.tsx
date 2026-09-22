@@ -20,7 +20,7 @@ import {
 import { AVATAR_BUCKET, MAX_AVATAR_BYTES, ROLE_META } from '@/lib/constants'
 import { formatDate } from '@/lib/format'
 import { useUpdateProfile } from '@/lib/queries/workspaces'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getTenantSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { displayName, errorMessage, formatBytes } from '@/lib/utils'
 
 export default function ProfileSettingsPage() {
@@ -70,7 +70,7 @@ export default function ProfileSettingsPage() {
     }
 
     setUploading(true)
-    const supabase = getSupabaseBrowserClient()
+    const supabase = getTenantSupabaseBrowserClient()
     // Path must start with the user id — that is what the storage policy checks.
     const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png'
     const path = `${userId}/avatar-${Date.now()}.${extension}`

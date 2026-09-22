@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export default async function AdminSettingsRoute() {
   const { admin } = await requirePlatformAdmin()
 
-  const supabase = await createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient('admin')
   const { count } = await supabase
     .from('platform_admins')
     .select('id', { count: 'exact', head: true })

@@ -1,11 +1,19 @@
 'use client'
 
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { usePathname } from 'next/navigation'
+
+import {
+  getAdminSupabaseBrowserClient,
+  getTenantSupabaseBrowserClient,
+} from '@/lib/supabase/clients'
 import type { IssueRow, LabelRow } from '@/lib/types/database'
 import type { IssueSummary } from '@/lib/types/app'
 
 export function useSupabase() {
-  return getSupabaseBrowserClient()
+  const pathname = usePathname()
+  return pathname.startsWith('/miraadmin')
+    ? getAdminSupabaseBrowserClient()
+    : getTenantSupabaseBrowserClient()
 }
 
 /** Throw PostgREST errors so React Query surfaces them through `error`. */
