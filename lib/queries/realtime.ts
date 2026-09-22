@@ -147,26 +147,34 @@ export function useRealtimeIssue(issueId?: string) {
 export function useRealtimeNotifications(userId?: string, workspaceId?: string) {
   const supabase = useSupabase()
   const invalidate = useDebouncedInvalidate(400)
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
     if (!userId || !workspaceId) return
 
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        () => invalidate(qk.notifications(workspaceId))
-      )
-      .subscribe()
+    if (channelRef.current) {
+      void supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+
+    const channel = supabase.channel(`notifications:${userId}`)
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      () => invalidate(qk.notifications(workspaceId))
+    )
+    channelRef.current = channel
+    channel.subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channelRef.current !== channel) return
+      channelRef.current = null
+      void supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, workspaceId, supabase])
