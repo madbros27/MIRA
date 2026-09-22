@@ -415,6 +415,25 @@ export function useSetUserActive() {
   })
 }
 
+export function useDeleteUser() {
+  const invalidate = useAdminInvalidate()
+
+  return useMutation({
+    mutationFn: async ({ userId, confirmEmail }: { userId: string; confirmEmail: string }) => {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEmail }),
+      })
+      const payload = (await response.json()) as { error?: string }
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error ?? 'Could not delete the user')
+      }
+    },
+    onSuccess: invalidate,
+  })
+}
+
 /* -------------------------------------------------------------------------- */
 /* Audit log                                                                  */
 /* -------------------------------------------------------------------------- */

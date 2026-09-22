@@ -507,6 +507,10 @@ export type Database = {
         Args: { p_workspace: string; p_user: string; p_is_primary?: boolean }
         Returns: WorkspaceOwnerRow
       }
+      admin_delete_user: {
+        Args: { p_user: string; p_confirm_email: string }
+        Returns: undefined
+      }
       admin_remove_owner: {
         Args: { p_workspace: string; p_user: string }
         Returns: undefined

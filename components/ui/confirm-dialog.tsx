@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import * as React from 'react'
 
 import { Button } from './button'
+import { Input } from './input'
 import {
   Dialog,
   DialogBody,
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = false,
   loading = false,
+  confirmation,
   onConfirm,
 }: {
   open: boolean
@@ -33,9 +35,17 @@ export function ConfirmDialog({
   cancelLabel?: string
   destructive?: boolean
   loading?: boolean
+  confirmation?: {
+    expected: string
+    value: string
+    onChange: (value: string) => void
+    label?: string
+    placeholder?: string
+  }
   onConfirm: () => void | Promise<void>
 }) {
   const [busy, setBusy] = React.useState(false)
+  const confirmationValid = !confirmation || confirmation.value === confirmation.expected
 
   async function handleConfirm() {
     setBusy(true)
@@ -66,6 +76,19 @@ export function ConfirmDialog({
             </DialogDescription>
           </DialogBody>
         ) : null}
+          {confirmation ? (
+            <div className="px-5 pb-3">
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {confirmation.label ?? 'Confirmation'}
+              </label>
+              <Input
+                value={confirmation.value}
+                onChange={(event) => confirmation.onChange(event.target.value)}
+                placeholder={confirmation.placeholder}
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
         <DialogFooter>
           <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
             {cancelLabel}
@@ -74,6 +97,7 @@ export function ConfirmDialog({
             variant={destructive ? 'destructive' : 'primary'}
             onClick={handleConfirm}
             loading={busy || loading}
+            disabled={!confirmationValid}
           >
             {confirmLabel}
           </Button>

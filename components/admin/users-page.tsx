@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, ShieldCheck, Users } from 'lucide-react'
+import { Search, ShieldCheck, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -12,7 +12,12 @@ import { Input } from '@/components/ui/input'
 import { Avatar, Badge, EmptyState, ErrorState } from '@/components/ui/primitives'
 import { formatDate } from '@/lib/format'
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value'
-import { adminError, useAdminUsers, useSetUserActive } from '@/lib/queries/admin'
+import {
+  adminError,
+  useAdminUsers,
+  useDeleteUser,
+  useSetUserActive,
+} from '@/lib/queries/admin'
 import type { AdminUserRow } from '@/lib/types/admin'
 
 /**
@@ -27,8 +32,11 @@ export function UsersPage() {
   const debounced = useDebouncedValue(search, 250)
   const { data, isLoading, error, refetch } = useAdminUsers(debounced)
   const setActive = useSetUserActive()
+  const deleteUser = useDeleteUser()
 
   const [suspending, setSuspending] = React.useState<AdminUserRow | null>(null)
+  const [deleting, setDeleting] = React.useState<AdminUserRow | null>(null)
+  const [confirmationEmail, setConfirmationEmail] = React.useState('')
 
   const columns: Column<AdminUserRow>[] = [
     {
@@ -104,34 +112,52 @@ export function UsersPage() {
       key: 'actions',
       header: '',
       align: 'right',
-      className: 'w-28',
+      className: 'w-44',
       cell: (user) =>
         user.is_platform_admin ? (
           <span className="text-2xs text-muted-foreground">—</span>
-        ) : user.is_active ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            className="text-destructive hover:bg-destructive-subtle"
-            onClick={() => setSuspending(user)}
-          >
-            Suspend
-          </Button>
         ) : (
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={async () => {
-              try {
-                await setActive.mutateAsync({ userId: user.id, active: true })
-                toast.success('Account reactivated')
-              } catch (caught) {
-                toast.error('Could not reactivate', { description: adminError(caught) })
-              }
-            }}
-          >
-            Reactivate
-          </Button>
+          <div className="flex justify-end gap-1">
+            {user.workspaces.some((workspace) => workspace.is_owner) ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-destructive hover:bg-destructive-subtle"
+                onClick={() => {
+                  setConfirmationEmail('')
+                  setDeleting(user)
+                }}
+              >
+                <Trash2 aria-hidden />
+                Delete
+              </Button>
+            ) : null}
+            {user.is_active ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-destructive hover:bg-destructive-subtle"
+                onClick={() => setSuspending(user)}
+              >
+                Suspend
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={async () => {
+                  try {
+                    await setActive.mutateAsync({ userId: user.id, active: true })
+                    toast.success('Account reactivated')
+                  } catch (caught) {
+                    toast.error('Could not reactivate', { description: adminError(caught) })
+                  }
+                }}
+              >
+                Reactivate
+              </Button>
+            )}
+          </div>
         ),
     },
   ]
@@ -214,6 +240,45 @@ export function UsersPage() {
             setSuspending(null)
           } catch (caught) {
             toast.error('Could not suspend', { description: adminError(caught) })
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null)
+            setConfirmationEmail('')
+          }
+        }}
+        title={`Delete ${deleting?.full_name ?? deleting?.email}?`}
+        description="This permanently deletes the account and its memberships. The workspace and its other users will remain. This action cannot be undone."
+        confirmLabel="Delete Account"
+        destructive
+        confirmation={
+          deleting
+            ? {
+                expected: deleting.email,
+                value: confirmationEmail,
+                onChange: setConfirmationEmail,
+                label: `Type ${deleting.email} to confirm`,
+                placeholder: deleting.email,
+              }
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!deleting) return
+          try {
+            await deleteUser.mutateAsync({
+              userId: deleting.id,
+              confirmEmail: confirmationEmail,
+            })
+            toast.success('Account deleted')
+            setDeleting(null)
+            setConfirmationEmail('')
+          } catch (caught) {
+            toast.error('Could not delete account', { description: adminError(caught) })
           }
         }}
       />
