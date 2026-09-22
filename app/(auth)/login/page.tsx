@@ -88,7 +88,15 @@ function LoginForm() {
       }
 
       broadcastSessionMessage('tenant', { type: 'SIGNED_IN' })
-      router.push(next)
+      const mustChangePassword = Boolean(
+        (data.user?.app_metadata as { mira_must_change_password?: boolean } | null)
+          ?.mira_must_change_password
+      )
+      router.push(
+        mustChangePassword
+          ? `/change-password?next=${encodeURIComponent(next)}`
+          : next
+      )
       router.refresh()
     } catch (caught) {
       const message = errorMessage(caught, 'Could not sign you in')

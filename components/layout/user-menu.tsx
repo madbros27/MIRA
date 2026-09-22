@@ -1,6 +1,6 @@
 'use client'
 
-import { Keyboard, LogOut, Settings, User, Users } from 'lucide-react'
+import { KeyRound, Keyboard, LogOut, Settings, User, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
@@ -79,6 +79,10 @@ export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain
         <DropdownMenuItem onSelect={() => router.push('/settings/profile')}>
           <User />
           Your profile
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push('/change-password')}>
+          <KeyRound />
+          Change password
         </DropdownMenuItem>
         {can.manageWorkspace(caps) ? (
           <DropdownMenuItem onSelect={() => router.push('/settings/workspace')}>

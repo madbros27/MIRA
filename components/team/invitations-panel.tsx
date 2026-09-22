@@ -201,7 +201,9 @@ function InviteDialog({
   const [email, setEmail] = React.useState('')
   const [fullName, setFullName] = React.useState('')
   const [positionId, setPositionId] = React.useState('')
+  const [createTemporaryPassword, setCreateTemporaryPassword] = React.useState(false)
   const [link, setLink] = React.useState<string | null>(null)
+  const [mailtoUrl, setMailtoUrl] = React.useState<string | null>(null)
 
   // Default to the "member" position once the list arrives.
   React.useEffect(() => {
@@ -222,6 +224,8 @@ function InviteDialog({
           setEmail('')
           setFullName('')
           setLink(null)
+          setMailtoUrl(null)
+          setCreateTemporaryPassword(false)
         }
       }}
     >
@@ -229,10 +233,18 @@ function InviteDialog({
         {link ? (
           <>
             <DialogHeader>
-              <DialogTitle>Invitation sent</DialogTitle>
+              <DialogTitle>{mailtoUrl ? 'Invitation prepared' : 'Invitation sent'}</DialogTitle>
               <DialogDescription>{email}</DialogDescription>
             </DialogHeader>
             <DialogBody className="space-y-3">
+              {mailtoUrl ? (
+                <Button asChild variant="primary" className="w-full">
+                  <a href={mailtoUrl}>
+                    <Mail />
+                    Open email draft
+                  </a>
+                </Button>
+              ) : null}
               <Field label="Invitation link" htmlFor="invite-link">
                 <div className="flex gap-2">
                   <Input
@@ -256,8 +268,7 @@ function InviteDialog({
                 </div>
               </Field>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                The link works whether or not they already have a MIRA account.
-                It expires in 14 days.
+                The link expires in 14 days.
               </p>
             </DialogBody>
             <DialogFooter>
@@ -275,11 +286,11 @@ function InviteDialog({
                   email: email.trim(),
                   positionId,
                   fullName: fullName.trim() || undefined,
+                  createTemporaryPassword,
                 })
-                toast.success(
-                  result.emailed ? `Invitation emailed to ${email.trim()}` : 'Invitation created'
-                )
+                toast.success(result.mailtoUrl ? 'Invitation prepared' : result.emailed ? `Invitation emailed to ${email.trim()}` : 'Invitation created')
                 setLink(result.inviteUrl ?? null)
+                setMailtoUrl(result.mailtoUrl ?? null)
               } catch (caught) {
                 toast.error('Could not send the invitation', {
                   description: errorMessage(caught),
@@ -349,6 +360,21 @@ function InviteDialog({
                   </p>
                 </div>
               ) : null}
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3">
+                <input
+                  type="checkbox"
+                  checked={createTemporaryPassword}
+                  onChange={(event) => setCreateTemporaryPassword(event.target.checked)}
+                  className="mt-0.5 size-4 accent-primary"
+                />
+                <span>
+                  <span className="block text-sm font-medium">Create temporary password</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Prepare an email draft with secure login details for a new MIRA account.
+                  </span>
+                </span>
+              </label>
             </DialogBody>
 
             <DialogFooter>

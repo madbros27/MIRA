@@ -489,6 +489,7 @@ export function useInviteMember(workspaceId: string) {
       email: string
       positionId: string
       fullName?: string
+      createTemporaryPassword?: boolean
     }) => {
       const response = await fetch('/api/invites', {
         method: 'POST',
@@ -500,6 +501,8 @@ export function useInviteMember(workspaceId: string) {
         error?: string
         inviteUrl?: string
         emailed?: boolean
+        temporaryPasswordCreated?: boolean
+        mailtoUrl?: string
       }
       if (!response.ok || payload.error) {
         throw new Error(payload.error ?? 'Could not send the invitation')

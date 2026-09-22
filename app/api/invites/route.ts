@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { randomBytes } from 'node:crypto'
 
 import { absoluteUrl } from '@/lib/supabase/env'
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server'
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     email?: string
     positionId?: string
     fullName?: string
+    createTemporaryPassword?: boolean
   }
   try {
     body = await request.json()
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
   // this too, but failing here means we do not leave a dangling invitation
   // that can never be accepted.
   const [{ data: workspace }, { count: seatsUsed }, { count: pending }] = await Promise.all([
-    supabase.from('workspaces').select('seat_limit, status').eq('id', workspaceId).maybeSingle(),
+    supabase.from('workspaces').select('name, seat_limit, status').eq('id', workspaceId).maybeSingle(),
     supabase
       .from('workspace_members')
       .select('user_id', { count: 'exact', head: true })
@@ -133,6 +135,44 @@ export async function POST(request: NextRequest) {
   }
 
   const inviteUrl = absoluteUrl(`/invite/${invite.token}`)
+  const createTemporaryPassword = body.createTemporaryPassword === true
+  const admin = createSupabaseAdminClient()
+  let temporaryPassword: string | null = null
+  let temporaryAccountCreated = false
+  let existingAccountInTemporaryMode = false
+
+  if (createTemporaryPassword) {
+    const { data: existingProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
+    let existingUserId = existingProfile?.id ?? null
+    if (!existingUserId) {
+      const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      existingUserId =
+        users.users.find((candidate) => candidate.email?.toLowerCase() === email)?.id ?? null
+    }
+
+    if (!existingUserId) {
+      temporaryPassword = `Mira-${randomBytes(18).toString('base64url')}`
+      const { error: createError } = await admin.auth.admin.createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: body.fullName?.trim() ? { full_name: body.fullName.trim() } : undefined,
+        app_metadata: { mira_must_change_password: true },
+      })
+      if (createError) {
+        await supabase.from('workspace_invites').update({ status: 'revoked' }).eq('id', invite.id)
+        return NextResponse.json({ error: createError.message }, { status: 400 })
+      }
+      temporaryAccountCreated = true
+    } else {
+      existingAccountInTemporaryMode = true
+    }
+  }
+
   const authRedirectUrl = absoluteUrl(
     `/auth/callback?next=${encodeURIComponent(`/invite/${invite.token}`)}`
   )
@@ -144,7 +184,49 @@ export async function POST(request: NextRequest) {
   let emailError: string | null = null
 
   try {
-    const admin = createSupabaseAdminClient()
+    if (createTemporaryPassword && temporaryAccountCreated && temporaryPassword) {
+      const loginUrl = absoluteUrl(`/login?next=${encodeURIComponent(`/invite/${invite.token}`)}`)
+      const bodyText = [
+        'Welcome to MIRA',
+        '',
+        `Workspace: ${workspace.name}`,
+        `MIRA login URL: ${loginUrl}`,
+        `Login email: ${email}`,
+        `Temporary password: ${temporaryPassword}`,
+        '',
+        'Please change your password after your first login.',
+      ].join('\n')
+
+      return NextResponse.json({
+        ok: true,
+        inviteId: invite.id,
+        inviteUrl,
+        temporaryPasswordCreated: true,
+        mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('MIRA Workspace Invitation')}&body=${encodeURIComponent(bodyText)}`,
+      })
+    }
+
+    if (existingAccountInTemporaryMode) {
+      const loginUrl = absoluteUrl(`/login?next=${encodeURIComponent(`/invite/${invite.token}`)}`)
+      const bodyText = [
+        'Welcome to MIRA',
+        '',
+        `Workspace: ${workspace.name}`,
+        `MIRA login URL: ${loginUrl}`,
+        `Login email: ${email}`,
+        '',
+        'Please sign in with your existing MIRA password to join this workspace.',
+      ].join('\n')
+
+      return NextResponse.json({
+        ok: true,
+        inviteId: invite.id,
+        inviteUrl,
+        temporaryPasswordCreated: false,
+        mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('MIRA Workspace Invitation')}&body=${encodeURIComponent(bodyText)}`,
+      })
+    }
+
     const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: authRedirectUrl,
     })
@@ -161,6 +243,7 @@ export async function POST(request: NextRequest) {
     inviteId: invite.id,
     inviteUrl,
     emailed,
+    temporaryPasswordCreated: false,
     // Not an error for the caller: the link can always be shared manually.
     emailNotice: emailed ? null : emailError,
   })

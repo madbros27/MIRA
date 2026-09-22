@@ -33,10 +33,15 @@ export default async function DashboardLayout({
   if (result.status === 'unauthenticated') redirect('/login')
   if (result.status === 'platform-admin') redirect('/miraadmin/dashboard')
   if (result.status === 'no-workspace') {
+    if (mustChangePassword(result.user)) redirect('/change-password')
     return <NoWorkspace email={result.user.email ?? ''} />
   }
 
   const { user, profile, access, active, impersonation } = result.context
+
+  if (!impersonation && mustChangePassword(user)) {
+    redirect('/change-password')
+  }
 
   const workspaces: WorkspaceWithAccess[] = access.map((entry) => ({
     ...entry.workspace,
@@ -67,4 +72,8 @@ export default async function DashboardLayout({
       <AppShell>{children}</AppShell>
     </WorkspaceProvider>
   )
+}
+
+function mustChangePassword(user: { app_metadata: Record<string, unknown> | null }) {
+  return Boolean(user.app_metadata?.mira_must_change_password)
 }
