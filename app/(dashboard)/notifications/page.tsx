@@ -10,14 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card } from '@/components/ui/primitives'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/controls'
 import { useMarkAllRead, useNotifications } from '@/lib/queries/notifications'
-import { useRealtimeNotifications } from '@/lib/queries/realtime'
 
 export default function NotificationsPage() {
-  const { workspaceId, userId } = useWorkspaceContext()
+  const { workspaceId } = useWorkspaceContext()
   const { data, isLoading } = useNotifications(workspaceId)
   const markAll = useMarkAllRead(workspaceId)
-
-  useRealtimeNotifications(userId, workspaceId)
 
   const unread = (data ?? []).filter((notification) => !notification.is_read)
   const mentions = (data ?? []).filter((notification) => notification.type === 'mentioned')
