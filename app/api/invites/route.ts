@@ -133,6 +133,9 @@ export async function POST(request: NextRequest) {
   }
 
   const inviteUrl = absoluteUrl(`/invite/${invite.token}`)
+  const authRedirectUrl = absoluteUrl(
+   `/auth/callback?next=${encodeURIComponent(`/invite/${invite.token}`)}`
+  )
 
   // Try to email the invitation. This needs the service-role key and only
   // works for addresses that do not have an account yet — everyone else simply
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest) {
   try {
     const admin = createSupabaseAdminClient()
     const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: inviteUrl,
+      redirectTo: authRedirectUrl,
     })
     if (inviteError) throw inviteError
     emailed = true
