@@ -40,7 +40,6 @@ export default function WorkspaceHomePage() {
   const { workspace, workspaceId, profile, userId, caps } = useWorkspaceContext()
   const { data: projects, isLoading: projectsLoading } = useProjects(workspaceId)
   const { data: issues, isLoading: issuesLoading } = useWorkspaceIssues(workspaceId)
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
   const setCreateProjectOpen = useUiStore((state) => state.setCreateProjectOpen)
 
@@ -81,14 +80,6 @@ export default function WorkspaceHomePage() {
                 (projects?.length ?? 0) === 1 ? 'project' : 'projects'
               }`
             : undefined
-        }
-        actions={
-          can.writeIssues(caps) ? (
-            <Button variant="primary" size="sm" onClick={() => openCreateIssue()}>
-              <Plus />
-              Create issue
-            </Button>
-          ) : null
         }
       />
 

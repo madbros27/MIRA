@@ -17,13 +17,15 @@ import { CommandPalette } from '@/components/search/command-palette'
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-dvh bg-canvas">
+    <div className="flex h-dvh overflow-hidden bg-canvas">
       <Sidebar />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Topbar />
         {/* Bottom padding clears the mobile tab bar. */}
-        <main className="min-w-0 flex-1 pb-bottom-nav md:pb-0">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-bottom-nav md:pb-0">
+          {children}
+        </main>
       </div>
 
       <MobileBottomNav />

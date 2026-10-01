@@ -37,7 +37,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'relative hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex',
+        'sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex',
         collapsed ? 'w-sidebar-collapsed' : 'w-sidebar'
       )}
       aria-label="Primary"
@@ -48,14 +48,16 @@ export function Sidebar() {
             <Logo />
           </Link>
         ) : (
-          <WorkspaceSwitcher />
+          <>
+            <UserMenu />
+            <WorkspaceSwitcher compact />
+          </>
         )}
       </div>
 
       <SidebarNav collapsed={collapsed} />
 
       <div className="mt-auto border-t border-sidebar-border p-2">
-        {collapsed ? null : <UserMenu />}
         {collapsed ? (
           <Tooltip content="Expand sidebar" side="right">
             <button
@@ -105,7 +107,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
   ]
 
   return (
-    <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+    <nav className="flex min-h-0 flex-1 flex-col px-2 pb-2">
       <SidebarButton
         collapsed={collapsed}
         icon={Search}
@@ -139,7 +141,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         })}
       </ul>
 
-      <div className="mt-5">
+      <div className="mt-5 flex min-h-0 flex-1 flex-col">
         <div
           className={cn(
             'flex items-center justify-between px-2 pb-1',
@@ -176,26 +178,28 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
             ))}
           </div>
         ) : projects?.length ? (
-          <ul className="space-y-0.5">
-            {projects.map((project) => {
-              const href = `/projects/${project.key}/board`
-              const active = pathname.startsWith(`/projects/${project.key}`)
-              return (
-                <li key={project.id}>
-                  <SidebarLink
-                    href={href}
-                    label={project.name}
-                    active={active}
-                    collapsed={collapsed}
-                    leading={
-                      <ProjectIcon icon={project.icon} color={project.color} size="sm" />
-                    }
-                    meta={project.key}
-                  />
-                </li>
-              )
-            })}
-          </ul>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ul className="space-y-0.5">
+              {projects.map((project) => {
+                const href = `/projects/${project.key}/board`
+                const active = pathname.startsWith(`/projects/${project.key}`)
+                return (
+                  <li key={project.id}>
+                    <SidebarLink
+                      href={href}
+                      label={project.name}
+                      active={active}
+                      collapsed={collapsed}
+                      leading={
+                        <ProjectIcon icon={project.icon} color={project.color} size="sm" />
+                      }
+                      meta={project.key}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         ) : collapsed ? null : (
           <p className="px-2 py-2 text-2xs leading-relaxed text-sidebar-muted">
             {can.createProject(caps)

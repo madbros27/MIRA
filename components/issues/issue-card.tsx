@@ -13,7 +13,7 @@ import {
 import { Avatar } from '@/components/ui/primitives'
 import { formatDueDate, isOverdue } from '@/lib/format'
 import type { IssueSummary } from '@/lib/types/app'
-import { cn, issueKey } from '@/lib/utils'
+import { cn, displayName, issueKey } from '@/lib/utils'
 
 export const IssueCard = React.forwardRef<
   HTMLDivElement,
@@ -222,6 +222,9 @@ export function IssueRow({
           src={issue.assignee?.avatar_url}
           size="sm"
         />
+        <span className="max-w-28 truncate text-xs text-muted-foreground">
+          {issue.assignee ? displayName(issue.assignee) : 'Unassigned'}
+        </span>
         {trailing}
       </div>
     </div>

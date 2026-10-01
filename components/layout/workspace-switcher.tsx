@@ -18,7 +18,13 @@ import { Badge } from '@/components/ui/primitives'
 import { ROLE_META } from '@/lib/constants'
 import { cn, initials } from '@/lib/utils'
 
-export function WorkspaceSwitcher({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain' }) {
+export function WorkspaceSwitcher({
+  variant = 'sidebar',
+  compact = false,
+}: {
+  variant?: 'sidebar' | 'plain'
+  compact?: boolean
+}) {
   const router = useRouter()
   const { workspace, workspaces } = useWorkspaceContext()
   const [pending, setPending] = React.useState(false)
@@ -44,22 +50,25 @@ export function WorkspaceSwitcher({ variant = 'sidebar' }: { variant?: 'sidebar'
           <button
             type="button"
             disabled={pending}
+            aria-label={compact ? `Switch workspace${workspace ? ` from ${workspace.name}` : ''}` : undefined}
+            title={compact ? 'Switch workspace' : undefined}
             className={cn(
-              'group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+              'group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+              compact ? 'size-8 shrink-0 justify-center p-0' : 'w-full',
               dark
                 ? 'text-sidebar-foreground hover:bg-sidebar-accent'
                 : 'border border-border bg-surface hover:bg-muted'
             )}
           >
-            <span
+            {compact ? null : <span
               className={cn(
                 'flex size-7 shrink-0 items-center justify-center rounded-md text-2xs font-bold uppercase',
                 dark ? 'bg-primary text-primary-foreground' : 'bg-primary-subtle text-primary-subtle-foreground'
               )}
             >
               {initials(workspace?.name, 'W')}
-            </span>
-            <span className="min-w-0 flex-1">
+            </span>}
+            {compact ? null : <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
                 {workspace?.name ?? 'No workspace'}
               </span>
@@ -71,7 +80,7 @@ export function WorkspaceSwitcher({ variant = 'sidebar' }: { variant?: 'sidebar'
               >
                 {workspace ? ROLE_META[workspace.role].label : 'Create one to start'}
               </span>
-            </span>
+            </span>}
             <ChevronsUpDown
               className={cn(
                 'size-3.5 shrink-0 opacity-60 transition-opacity group-hover:opacity-100'

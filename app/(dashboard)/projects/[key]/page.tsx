@@ -52,16 +52,7 @@ export default function ProjectOverviewPage() {
   const sprintDone = sprintIssues.filter((issue) => issue.status?.category === 'done')
 
   return (
-    <ProjectPage
-      actions={
-        can.writeIssues(caps) ? (
-          <Button variant="primary" size="sm" onClick={() => openCreateIssue({ projectId })}>
-            <Plus />
-            Create
-          </Button>
-        ) : null
-      }
-    >
+    <ProjectPage>
       <div className="space-y-4 p-3 sm:p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile label="Open issues" value={open.length} isLoading={isLoading} />

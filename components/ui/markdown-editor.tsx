@@ -194,7 +194,7 @@ export function MarkdownEditor({
           <>
             {toolbarButton('Bold', <Bold />, () => wrapSelection('**'))}
             {toolbarButton('Italic', <Italic />, () => wrapSelection('_'))}
-            {toolbarButton('Inline code', <Code />, () => wrapSelection('`'))}
+            {toolbarButton('Inline code', <Code />, () => wrapSelection('`', '`'))}
             {toolbarButton('Link', <Link2 />, () => wrapSelection('[', '](https://)', 'label'))}
             {toolbarButton('Bulleted list', <List />, () => prefixLines('- '))}
             {toolbarButton('Numbered list', <ListOrdered />, () =>

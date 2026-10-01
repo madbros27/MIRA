@@ -8,7 +8,6 @@ import { IssueRow } from '@/components/issues/issue-card'
 import { useWorkspaceContext } from '@/components/providers/workspace-provider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/controls'
 import { Badge, Card, EmptyState, Skeleton } from '@/components/ui/primitives'
-import { Button } from '@/components/ui/button'
 import { isOverdue } from '@/lib/format'
 import { useWorkspaceIssues } from '@/lib/queries/issues'
 import { PRIORITY_WEIGHT } from '@/lib/constants'
@@ -20,7 +19,6 @@ export default function MyWorkPage() {
   const { workspaceId, userId } = useWorkspaceContext()
   const { data: issues, isLoading } = useWorkspaceIssues(workspaceId)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
 
   const buckets = React.useMemo(() => {
     const all = issues ?? []
@@ -63,11 +61,6 @@ export default function MyWorkPage() {
             : `${buckets.open.length} open · ${sum(
                 buckets.open.map((issue) => issue.story_points)
               )} points · ${buckets.overdue.length} overdue`
-        }
-        actions={
-          <Button variant="primary" size="sm" onClick={() => openCreateIssue()}>
-            Create issue
-          </Button>
         }
       />
 

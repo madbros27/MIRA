@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/menu'
 import { Avatar } from '@/components/ui/primitives'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { ROLE_META } from '@/lib/constants'
 import { can } from '@/lib/permissions'
 import { useUiStore } from '@/lib/store/ui-store'
 import { cn, displayName } from '@/lib/utils'
@@ -22,7 +23,7 @@ import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 
 export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain' }) {
   const router = useRouter()
-  const { profile, userId, caps } = useWorkspaceContext()
+  const { profile, userId, caps, workspace } = useWorkspaceContext()
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen)
   const [signingOut, setSigningOut] = React.useState(false)
 
@@ -42,7 +43,7 @@ export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+            'flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
             dark
               ? 'text-sidebar-foreground hover:bg-sidebar-accent'
               : 'hover:bg-muted'
@@ -62,7 +63,7 @@ export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain
                 dark ? 'text-sidebar-muted' : 'text-muted-foreground'
               )}
             >
-              {profile?.email}
+              {workspace?.position?.name ?? (workspace ? ROLE_META[workspace.role].label : 'Member')}
             </span>
           </span>
         </button>

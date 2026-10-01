@@ -1259,7 +1259,6 @@ revoke all on function public.notify_issue_change() from public;
 revoke all on function public.notify_comment() from public;
 revoke all on function public.archive_comment_revision() from public;
 revoke all on function public.set_updated_at() from public;
-revoke all on function public.claim_pending_invites(uuid, text) from public;
 
 -- ---------------------------------------------------------------------------
 -- RPC: notifications
@@ -1311,6 +1310,8 @@ begin
   return v_count;
 end;
 $$;
+
+revoke all on function public.claim_pending_invites(uuid, text) from public;
 
 create or replace function public.accept_invite(p_token text)
 returns uuid
@@ -3976,7 +3977,10 @@ begin
   -- Suspending globally also parks every workspace seat, so RLS stops
   -- resolving capabilities for them immediately.
   update public.workspace_members
-     set status = case when p_active then 'active' else 'suspended' end
+   set status = case
+     when p_active then 'active'::public.member_status
+     else 'suspended'::public.member_status
+   end
    where user_id = p_user
      and status <> 'invited';
 
@@ -5068,4 +5072,329 @@ grant update (
 ) on public.workspaces to authenticated;
 
 revoke all on all tables in schema public from anon;
+
+
+-- >>> 20260921184258_fix_admin_user_status_enum.sql ---------------------
+
+create or replace function public.admin_set_user_active(
+  p_user   uuid,
+  p_active boolean,
+  p_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  perform public.assert_platform_admin();
+
+  if public.is_platform_admin(p_user) and not p_active then
+    raise exception 'Deactivate a System Administrator from the Settings page, not the user list';
+  end if;
+
+  update public.profiles
+     set is_active = p_active,
+         updated_at = now()
+   where id = p_user;
+
+  update public.workspace_members
+     set status = case
+       when p_active then 'active'::public.member_status
+       else 'suspended'::public.member_status
+     end
+   where user_id = p_user
+     and status <> 'invited';
+
+  perform public.log_platform_action(
+    case when p_active then 'user.reactivated' else 'user.suspended' end,
+    'user',
+    p_user,
+    jsonb_build_object('reason', p_reason)
+  );
+end;
+$$;
+
+
+-- >>> 20260922084535_delete_owner_account.sql ---------------------------
+
+create or replace function public.admin_delete_user(
+  p_user uuid,
+  p_confirm_email text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_email text;
+begin
+  -- Only the MIRA System Administrator can perform this operation
+  perform public.assert_platform_admin();
+
+  -- Get the user's email
+  select email
+    into v_email
+  from auth.users
+  where id = p_user;
+
+  if v_email is null then
+    raise exception 'User not found';
+  end if;
+
+  -- Require exact email confirmation
+  if lower(trim(v_email)) <> lower(trim(p_confirm_email)) then
+    raise exception 'Email confirmation does not match';
+  end if;
+
+  -- Never allow deletion of a System Administrator here
+  if public.is_platform_admin(p_user) then
+    raise exception 'System Administrator accounts cannot be deleted from the user list';
+  end if;
+
+  -- Delete the Auth account.
+  -- Related application records should be handled by the existing
+  -- foreign-key cascade rules.
+  delete from auth.users
+  where id = p_user;
+
+  -- Record the action
+  perform public.log_platform_action(
+    'user.deleted',
+    'user',
+    p_user,
+    jsonb_build_object('email', v_email)
+  );
+end;
+$$;
+
+revoke all on function public.admin_delete_user(uuid, text) from public;
+
+grant execute on function public.admin_delete_user(uuid, text)
+to service_role;
+
+
+-- >>> 20260922120000_fix_admin_delete_user_auth.sql ---------------------
+
+-- The original delete RPC was deployed with a service_role-only grant and
+-- logged after deleting the target auth row. Admin API calls use the caller's
+-- authenticated client so auth.uid() remains available to the guard.
+create or replace function public.admin_delete_user(
+  p_user uuid,
+  p_confirm_email text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_email text;
+begin
+  perform public.assert_platform_admin();
+
+  select email
+    into v_email
+  from auth.users
+  where id = p_user;
+
+  if v_email is null then
+    raise exception 'User not found';
+  end if;
+
+  if p_confirm_email is null or v_email <> p_confirm_email then
+    raise exception 'Email confirmation does not match';
+  end if;
+
+  if public.is_platform_admin(p_user) then
+    raise exception 'System Administrator accounts cannot be deleted from the user list';
+  end if;
+
+  -- The legacy ownership pointer is restrictive; clear it without deleting
+  -- the workspace. The normalized workspace_owners rows cascade with profile.
+  update public.workspaces
+     set owner_id = null
+   where owner_id = p_user;
+
+  -- The audit row is written before the auth row is removed. The target_id is
+  -- intentionally not an FK, so the record remains after the cascade.
+  perform public.log_platform_action(
+    'user.deleted',
+    'user',
+    p_user,
+    jsonb_build_object('email', v_email)
+  );
+
+  delete from auth.users
+  where id = p_user;
+end;
+$$;
+
+revoke all on function public.admin_delete_user(uuid, text) from public;
+grant execute on function public.admin_delete_user(uuid, text) to authenticated;
+grant execute on function public.admin_delete_user(uuid, text) to service_role;
+
+-- Owners use the same active profile and membership gates as other members.
+-- Without these checks, ownership could bypass a global suspension.
+create or replace function public.current_workspace_ids(p_user uuid default auth.uid())
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select w.id
+    from public.workspaces w
+   where w.deleted_at is null
+     and w.status in ('active', 'archived')
+     and exists (
+       select 1
+         from public.profiles p
+         join public.workspace_members m on m.user_id = p.id
+        where p.id = p_user
+          and p.is_active
+          and m.workspace_id = w.id
+          and m.status = 'active'
+     );
+$$;
+
+create or replace function public.is_workspace_member(p_workspace uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    public.is_platform_admin()
+    or exists (
+      select 1
+        from public.profiles p
+        join public.workspace_members m on m.user_id = p.id
+       where p.id = auth.uid()
+         and p.is_active
+         and m.workspace_id = p_workspace
+         and m.status = 'active'
+    );
+$$;
+
+create or replace function public.has_capability(
+  p_user uuid,
+  p_workspace uuid,
+  p_capability text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    p_user is not null
+    and p_workspace is not null
+    and exists (
+      select 1
+        from public.profiles p
+        join public.workspace_members m on m.user_id = p.id
+       where p.id = p_user
+         and p.is_active
+         and m.workspace_id = p_workspace
+         and m.status = 'active'
+         and (
+           public.is_workspace_owner(p_workspace, p_user)
+           or exists (
+             select 1
+               from public.position_permissions pp
+              where pp.position_id = m.position_id
+                and pp.capability = p_capability
+                and pp.allowed
+           )
+         )
+    );
+$$;
+
+
+-- >>> 20260922133029_fix_create_project_rpc_overload.sql ----------------
+
+-- Remove the obsolete 7-parameter create_project overload.
+-- Keep the current 10-parameter version from 20250201000200_platform_rpc.sql.
+
+drop function if exists public.create_project(
+  uuid,
+  text,
+  text,
+  text,
+  uuid,
+  text,
+  text
+);
+
+
+-- >>> 20261001000100_notifications_and_member_read_grant.sql ------------
+
+-- Creation events use the existing notification type to avoid changing the
+-- notification enum or client contract.
+create or replace function public.notify_project_created()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.notifications
+    (user_id, workspace_id, project_id, actor_id, type, title, body, payload)
+  select m.user_id, new.workspace_id, new.id, auth.uid(), 'issue_created',
+         'New project: ' || new.name, new.description,
+         jsonb_build_object('project_key', new.key)
+    from public.workspace_members m
+   where m.workspace_id = new.workspace_id
+     and m.user_id is distinct from auth.uid();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists projects_notify_created on public.projects;
+create trigger projects_notify_created
+  after insert on public.projects
+  for each row execute function public.notify_project_created();
+
+create or replace function public.notify_sprint_created()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_workspace uuid;
+  v_project_key text;
+begin
+  select p.workspace_id, p.key
+    into v_workspace, v_project_key
+    from public.projects p
+   where p.id = new.project_id;
+
+  insert into public.notifications
+    (user_id, workspace_id, project_id, actor_id, type, title, body, payload)
+  select m.user_id, v_workspace, new.project_id, auth.uid(), 'issue_created',
+         'New sprint: ' || new.name, new.goal,
+         jsonb_build_object('sprint_id', new.id, 'project_key', v_project_key)
+    from public.workspace_members m
+   where m.workspace_id = v_workspace
+     and m.user_id is distinct from auth.uid();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists sprints_notify_created on public.sprints;
+create trigger sprints_notify_created
+  after insert on public.sprints
+  for each row execute function public.notify_sprint_created();
+
+-- Table privileges and row visibility are separate: authenticated users may
+-- query memberships, while the existing RLS policy limits rows to their own
+-- workspaces. No access is granted to anon.
+grant select on table public.workspace_members to authenticated;
 

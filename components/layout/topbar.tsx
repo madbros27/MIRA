@@ -70,7 +70,7 @@ export function Topbar() {
               className="hidden sm:inline-flex"
             >
               <Plus />
-              Create
+              Create Issue
             </Button>
           </Tooltip>
         ) : null}

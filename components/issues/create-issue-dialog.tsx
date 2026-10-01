@@ -108,10 +108,14 @@ export function CreateIssueDialog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed.open, seed.projectId, seed.statusId, seed.sprintId, seed.epicId, seed.parentId, seed.type])
 
-  // Default the status to the project's first column once statuses load.
+  const defaultStatus = statuses?.find((status) => status.category === 'todo') ?? statuses?.[0]
+
+  // Keep a seeded status when valid; otherwise select the project's default.
   React.useEffect(() => {
-    if (!form.statusId && statuses?.length) {
-      setForm((prev) => ({ ...prev, statusId: statuses[0].id }))
+    if (!statuses?.length) return
+    if (form.statusId && statuses.some((status) => status.id === form.statusId)) return
+    if (defaultStatus) {
+      setForm((prev) => ({ ...prev, statusId: defaultStatus.id }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statuses, activeProjectId])
@@ -135,7 +139,7 @@ export function CreateIssueDialog() {
         title: form.title.trim(),
         description: form.description.trim() || null,
         type: form.type,
-        status_id: form.statusId || statuses?.[0]?.id,
+        status_id: form.statusId || defaultStatus?.id,
         priority: form.priority,
         assignee_id: form.assigneeId,
         sprint_id: form.sprintId,
@@ -249,7 +253,7 @@ export function CreateIssueDialog() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Status">
                 <StatusSelect
-                  value={form.statusId}
+                  value={form.statusId || defaultStatus?.id || ''}
                   onChange={(statusId) => setForm((prev) => ({ ...prev, statusId }))}
                   statuses={statuses ?? []}
                 />
