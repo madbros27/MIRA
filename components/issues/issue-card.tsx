@@ -10,6 +10,7 @@ import {
   PriorityIcon,
   StoryPoints,
 } from './issue-atoms'
+import { PRIORITY_META } from '@/lib/constants'
 import { Avatar } from '@/components/ui/primitives'
 import { formatDueDate, isOverdue } from '@/lib/format'
 import type { IssueSummary } from '@/lib/types/app'
@@ -153,6 +154,7 @@ export function IssueRow({
   dragHandle,
   className,
   showProject = false,
+  backlogTable = false,
 }: {
   issue: IssueSummary
   onOpen?: (issueId: string) => void
@@ -162,10 +164,110 @@ export function IssueRow({
   dragHandle?: React.ReactNode
   className?: string
   showProject?: boolean
+  backlogTable?: boolean
 }) {
   const key = issueKey(issue.project?.key, issue.issue_number)
   const done = issue.status?.category === 'done'
   const overdue = !done && isOverdue(issue.due_date)
+
+  if (backlogTable) {
+    return (
+      <div
+        className={cn(
+          'group grid grid-cols-[3rem_6rem_minmax(18rem,1fr)_9rem_8rem_13rem] items-center gap-2 border-b border-border bg-surface px-2 py-2 last:border-b-0 hover:bg-muted/50',
+          selected && 'bg-primary-subtle/40',
+          className
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-1">
+          {onSelectedChange ? (
+            <input
+              type="checkbox"
+              checked={Boolean(selected)}
+              onChange={(event) => onSelectedChange(event.target.checked)}
+              className="size-3.5 shrink-0 accent-[hsl(var(--primary))]"
+              aria-label={`Select ${key}`}
+            />
+          ) : null}
+          {dragHandle}
+        </div>
+
+        <IssueKeyBadge issueKey={key} className="w-16 shrink-0 sm:w-20" />
+
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onOpen?.(issue.id)}
+            className="flex min-w-0 items-start gap-1.5 text-left text-[0.8125rem] font-medium hover:underline"
+          >
+            <IssueTypeIcon type={issue.type} className="mt-0.5" />
+            {showProject && issue.project ? (
+              <span className="shrink-0 text-muted-foreground">{issue.project.name} ·</span>
+            ) : null}
+            <span className={cn('min-w-0 break-words', done && 'text-muted-foreground line-through')}>
+              {issue.title}
+            </span>
+          </button>
+          {issue.labels.length || issue.comment_count > 0 || overdue || issue.story_points != null ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-5">
+              {issue.labels.slice(0, 2).map((label) => (
+                <LabelChip key={label.id} label={label} />
+              ))}
+              {issue.comment_count > 0 ? (
+                <span className="inline-flex items-center gap-0.5 text-2xs text-muted-foreground">
+                  <MessageSquare className="size-3" />
+                  {issue.comment_count}
+                </span>
+              ) : null}
+              {overdue ? (
+                <CalendarClock className="size-3.5 text-destructive" aria-label="Overdue" />
+              ) : null}
+              {issue.story_points != null ? <StoryPoints points={issue.story_points} /> : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="min-w-0">
+          {issue.status ? (
+            <span
+              className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: `${issue.status.color}1f`,
+                color: issue.status.color,
+              }}
+            >
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: issue.status.color }}
+                aria-hidden
+              />
+              <span className="truncate">{issue.status.name}</span>
+            </span>
+          ) : <span className="text-xs text-muted-foreground">—</span>}
+        </div>
+
+        <div className="flex min-w-0 items-center gap-1.5">
+          <PriorityIcon priority={issue.priority} />
+          <span className="truncate text-xs text-muted-foreground">
+            {PRIORITY_META[issue.priority].label}
+          </span>
+        </div>
+
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Avatar
+            id={issue.assignee?.id ?? 'unassigned'}
+            name={issue.assignee?.full_name ?? issue.assignee?.email ?? null}
+            src={issue.assignee?.avatar_url}
+            size="sm"
+          />
+          <span className="truncate text-xs text-muted-foreground">
+            {issue.assignee ? displayName(issue.assignee) : 'Unassigned'}
+          </span>
+          {trailing}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

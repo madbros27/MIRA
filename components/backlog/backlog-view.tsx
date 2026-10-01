@@ -524,27 +524,42 @@ function BacklogSection({
           ref={setNodeRef}
           className={cn('min-h-12 transition-colors', isOver && 'bg-primary-subtle/50')}
         >
-          <SortableContext
-            items={issues.map((issue) => issue.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {issues.map((issue) => (
-              <SortableBacklogRow
-                key={issue.id}
-                issue={issue}
-                disabled={!canWrite}
-                selected={selected.includes(issue.id)}
-                onSelectedChange={(isSelected) =>
-                  onSelectedChange(
-                    isSelected
-                      ? [...selected, issue.id]
-                      : selected.filter((item) => item !== issue.id)
-                  )
-                }
-                onOpen={onOpenIssue}
-              />
-            ))}
-          </SortableContext>
+          <div className="overflow-x-auto">
+            <div className="min-w-[60rem]">
+              <div
+                role="row"
+                className="grid grid-cols-[3rem_6rem_minmax(18rem,1fr)_9rem_8rem_13rem] items-center gap-2 border-b border-border bg-surface-raised px-2 py-2 text-2xs font-semibold uppercase text-muted-foreground"
+              >
+                <span aria-label="Selection" />
+                <span>ID</span>
+                <span>Issue / Title</span>
+                <span>Status</span>
+                <span>Priority</span>
+                <span>Assignee</span>
+              </div>
+              <SortableContext
+                items={issues.map((issue) => issue.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {issues.map((issue) => (
+                  <SortableBacklogRow
+                    key={issue.id}
+                    issue={issue}
+                    disabled={!canWrite}
+                    selected={selected.includes(issue.id)}
+                    onSelectedChange={(isSelected) =>
+                      onSelectedChange(
+                        isSelected
+                          ? [...selected, issue.id]
+                          : selected.filter((item) => item !== issue.id)
+                      )
+                    }
+                    onOpen={onOpenIssue}
+                  />
+                ))}
+              </SortableContext>
+            </div>
+          </div>
 
           {!issues.length ? (
             <EmptyState
@@ -598,6 +613,7 @@ function SortableBacklogRow({
     >
       <IssueRow
         issue={issue}
+        backlogTable
         onOpen={onOpen}
         selected={selected}
         onSelectedChange={disabled ? undefined : onSelectedChange}
