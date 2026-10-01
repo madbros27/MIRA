@@ -110,12 +110,12 @@ export function MarkdownEditor({
     requestAnimationFrame(() => el.focus())
   }
 
-  function applyInlineCode() {
-    wrapSelection('`', '`')
+  function prefixLineWithQuoteMarker() {
+    prefixLines('> ')
   }
 
-  function applyQuote() {
-    prefixLines('> ')
+  function wrapInDoubleQuotes() {
+    wrapSelection('"', '"')
   }
 
   function insertMention(person: MentionCandidate) {
@@ -181,6 +181,7 @@ export function MarkdownEditor({
     <button
       key={label}
       type="button"
+      onMouseDown={(event) => event.preventDefault()}
       onClick={action}
       title={label}
       aria-label={label}
@@ -202,13 +203,13 @@ export function MarkdownEditor({
           <>
             {toolbarButton('Bold', <Bold />, () => wrapSelection('**'))}
             {toolbarButton('Italic', <Italic />, () => wrapSelection('_'))}
-            {toolbarButton('Inline code', <Code />, applyInlineCode)}
+            {toolbarButton('Prefix line with >', <Code />, prefixLineWithQuoteMarker)}
             {toolbarButton('Link', <Link2 />, () => wrapSelection('[', '](https://)', 'label'))}
             {toolbarButton('Bulleted list', <List />, () => prefixLines('- '))}
             {toolbarButton('Numbered list', <ListOrdered />, () =>
               prefixLines((index) => `${index + 1}. `)
             )}
-            {toolbarButton('Quote', <Quote />, applyQuote)}
+            {toolbarButton('Wrap in double quotes', <Quote />, wrapInDoubleQuotes)}
             {people.length
               ? toolbarButton('Mention someone', <AtSign />, () => {
                   const el = textareaRef.current
