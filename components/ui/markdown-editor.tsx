@@ -110,6 +110,14 @@ export function MarkdownEditor({
     requestAnimationFrame(() => el.focus())
   }
 
+  function applyInlineCode() {
+    wrapSelection('`', '`')
+  }
+
+  function applyQuote() {
+    prefixLines('> ')
+  }
+
   function insertMention(person: MentionCandidate) {
     const el = textareaRef.current
     if (!el || !mention) return
@@ -194,13 +202,13 @@ export function MarkdownEditor({
           <>
             {toolbarButton('Bold', <Bold />, () => wrapSelection('**'))}
             {toolbarButton('Italic', <Italic />, () => wrapSelection('_'))}
-            {toolbarButton('Inline code', <Code />, () => wrapSelection('`', '`'))}
+            {toolbarButton('Inline code', <Code />, applyInlineCode)}
             {toolbarButton('Link', <Link2 />, () => wrapSelection('[', '](https://)', 'label'))}
             {toolbarButton('Bulleted list', <List />, () => prefixLines('- '))}
             {toolbarButton('Numbered list', <ListOrdered />, () =>
               prefixLines((index) => `${index + 1}. `)
             )}
-            {toolbarButton('Quote', <Quote />, () => prefixLines('> '))}
+            {toolbarButton('Quote', <Quote />, applyQuote)}
             {people.length
               ? toolbarButton('Mention someone', <AtSign />, () => {
                   const el = textareaRef.current
