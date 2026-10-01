@@ -22,13 +22,12 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertTriangle, Plus } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
 import { IssueCard, IssueCardSkeleton } from '@/components/issues/issue-card'
 import { CategoryDot } from '@/components/issues/issue-atoms'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/primitives'
 import { useMoveIssue } from '@/lib/queries/issues'
 import type { IssueSummary, ProjectStatus } from '@/lib/types/app'
@@ -41,7 +40,6 @@ type BoardProps = {
   isLoading?: boolean
   canWrite: boolean
   onOpenIssue: (issueId: string) => void
-  onCreateInStatus?: (statusId: string) => void
   /** Rendered when a column has no cards and no filters are active. */
   emptyHint?: React.ReactNode
 }
@@ -53,7 +51,6 @@ export function KanbanBoard({
   isLoading,
   canWrite,
   onOpenIssue,
-  onCreateInStatus,
   emptyHint,
 }: BoardProps) {
   const { move } = useMoveIssue(projectId)
@@ -213,7 +210,6 @@ export function KanbanBoard({
             isOver={overColumn === status.id}
             canWrite={canWrite}
             onOpenIssue={onOpenIssue}
-            onCreate={onCreateInStatus}
             emptyHint={emptyHint}
           />
         ))}
@@ -237,7 +233,6 @@ function BoardColumn({
   isOver,
   canWrite,
   onOpenIssue,
-  onCreate,
   emptyHint,
 }: {
   status: ProjectStatus
@@ -246,7 +241,6 @@ function BoardColumn({
   isOver: boolean
   canWrite: boolean
   onOpenIssue: (issueId: string) => void
-  onCreate?: (statusId: string) => void
   emptyHint?: React.ReactNode
 }) {
   const { setNodeRef } = useDroppable({
@@ -321,17 +315,6 @@ function BoardColumn({
         ) : null}
       </div>
 
-      {canWrite && onCreate ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 w-full justify-start"
-          onClick={() => onCreate(status.id)}
-        >
-          <Plus />
-          Add issue
-        </Button>
-      ) : null}
     </section>
   )
 }

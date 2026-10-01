@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Radio } from 'lucide-react'
+import { Radio } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
@@ -9,7 +9,6 @@ import { FilterBar } from '@/components/filters/filter-bar'
 import { ProjectPage } from '@/components/projects/project-page'
 import { useProjectContext } from '@/components/projects/project-provider'
 import { useWorkspaceContext } from '@/components/providers/workspace-provider'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -43,7 +42,6 @@ export default function BoardPage() {
   const { data: labels } = useLabels(projectId)
   const { data: members } = useMembers(workspaceId)
 
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
 
   useRealtimeProject(projectId)
@@ -90,22 +88,6 @@ export default function BoardPage() {
               Live
             </span>
           </Tooltip>
-          {canWrite ? (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() =>
-                openCreateIssue({
-                  projectId,
-                  statusId: statuses?.[0]?.id,
-                  sprintId: sprintScope === ALL_SPRINTS ? activeSprint?.id : sprintScope === NO_SPRINT ? null : sprintScope,
-                })
-              }
-            >
-              <Plus />
-              Create
-            </Button>
-          ) : null}
         </>
       }
     >
@@ -150,24 +132,7 @@ export default function BoardPage() {
             isLoading={statusesLoading || issuesLoading}
             canWrite={canWrite}
             onOpenIssue={openIssueDialog}
-            onCreateInStatus={
-              canWrite
-                ? (statusId) =>
-                    openCreateIssue({
-                      projectId,
-                      statusId,
-                      sprintId:
-                        sprintScope === ALL_SPRINTS
-                          ? activeSprint?.id
-                          : sprintScope === NO_SPRINT
-                            ? null
-                            : sprintScope,
-                    })
-                : undefined
-            }
-            emptyHint={
-              canWrite ? 'Drop a card here, or use Add issue.' : 'Nothing in this column.'
-            }
+            emptyHint="Nothing in this column."
           />
         </div>
       </div>

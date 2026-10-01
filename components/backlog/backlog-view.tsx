@@ -72,7 +72,6 @@ export function BacklogView({
   canWrite,
   canManageSprints,
   onOpenIssue,
-  onCreateIssue,
 }: {
   projectId: string
   issues: IssueSummary[]
@@ -83,7 +82,6 @@ export function BacklogView({
   canWrite: boolean
   canManageSprints: boolean
   onOpenIssue: (issueId: string) => void
-  onCreateIssue: (seed: { sprintId?: string | null }) => void
 }) {
   const reorder = useReorderBacklog(projectId)
   const deleteSprint = useDeleteSprint(projectId)
@@ -240,7 +238,6 @@ export function BacklogView({
               selected={selected}
               onSelectedChange={setSelected}
               onOpenIssue={onOpenIssue}
-              onCreateIssue={() => onCreateIssue({ sprintId: sprint.id })}
               subtitle={
                 <span className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
                   <span>{formatSprintWindow(sprint.start_date, sprint.end_date)}</span>
@@ -320,7 +317,6 @@ export function BacklogView({
             selected={selected}
             onSelectedChange={setSelected}
             onOpenIssue={onOpenIssue}
-            onCreateIssue={() => onCreateIssue({ sprintId: null })}
             subtitle={
               <span className="text-2xs text-muted-foreground">
                 Everything not yet committed to a sprint
@@ -462,7 +458,6 @@ function BacklogSection({
   selected,
   onSelectedChange,
   onOpenIssue,
-  onCreateIssue,
   emptyMessage = 'Drag issues here.',
 }: {
   id: string
@@ -476,7 +471,6 @@ function BacklogSection({
   selected: string[]
   onSelectedChange: (ids: string[]) => void
   onOpenIssue: (issueId: string) => void
-  onCreateIssue: () => void
   emptyMessage?: string
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `section:${id}` })
@@ -571,16 +565,6 @@ function BacklogSection({
             />
           ) : null}
 
-          {canWrite ? (
-            <button
-              type="button"
-              onClick={onCreateIssue}
-              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Plus className="size-3.5" />
-              Create issue
-            </button>
-          ) : null}
         </div>
       )}
     </section>

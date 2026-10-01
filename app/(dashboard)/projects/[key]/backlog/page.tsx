@@ -1,6 +1,5 @@
 'use client'
 
-import { Plus } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
@@ -9,7 +8,6 @@ import { FilterBar } from '@/components/filters/filter-bar'
 import { ProjectPage } from '@/components/projects/project-page'
 import { useProjectContext } from '@/components/projects/project-provider'
 import { useWorkspaceContext } from '@/components/providers/workspace-provider'
-import { Button } from '@/components/ui/button'
 import { downloadCsv, issuesToCsv } from '@/lib/csv'
 import { filterFromSearchParams, matchesFilter } from '@/lib/filters'
 import { can } from '@/lib/permissions'
@@ -32,7 +30,6 @@ export default function BacklogPage() {
   const { data: labels } = useLabels(projectId)
   const { data: members } = useMembers(workspaceId)
 
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
 
   useRealtimeProject(projectId)
@@ -49,21 +46,7 @@ export default function BacklogPage() {
   const canWrite = can.writeIssues(caps)
 
   return (
-    <ProjectPage
-      description="Order the backlog by dragging, then pull work into a sprint."
-      actions={
-        canWrite ? (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => openCreateIssue({ projectId, sprintId: null })}
-          >
-            <Plus />
-            Create
-          </Button>
-        ) : null
-      }
-    >
+    <ProjectPage description="Order the backlog by dragging, then pull work into a sprint.">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-2 sm:px-4">
         <FilterBar
           filter={filter}
@@ -87,7 +70,6 @@ export default function BacklogPage() {
         canWrite={canWrite}
         canManageSprints={can.manageSprints(caps)}
         onOpenIssue={openIssueDialog}
-        onCreateIssue={(seed) => openCreateIssue({ projectId, ...seed })}
       />
     </ProjectPage>
   )

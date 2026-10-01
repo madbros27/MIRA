@@ -13,8 +13,6 @@ import {
   FolderKanban,
   Home,
   Inbox,
-  Plus,
-  Search,
   Settings,
   Users,
 } from 'lucide-react'
@@ -36,10 +34,8 @@ import { cn, displayName } from '@/lib/utils'
 
 export function MobileBottomNav() {
   const pathname = usePathname()
-  const { workspaceId, caps } = useWorkspaceContext()
+  const { workspaceId } = useWorkspaceContext()
   const unread = useUnreadCount(workspaceId)
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
-  const setCommandOpen = useUiStore((state) => state.setCommandOpen)
 
   const tabs = [
     {
@@ -54,7 +50,6 @@ export function MobileBottomNav() {
       icon: FolderKanban,
       match: (p: string) => p.startsWith('/projects') || p.startsWith('/board'),
     },
-    null, // slot for the centre action
     {
       href: '/notifications',
       label: 'Alerts',
@@ -75,8 +70,7 @@ export function MobileBottomNav() {
       className="fixed inset-x-0 bottom-0 z-30 flex h-bottom-nav items-stretch border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       aria-label="Primary"
     >
-      {tabs.map((tab, index) =>
-        tab ? (
+      {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
@@ -94,23 +88,7 @@ export function MobileBottomNav() {
               </span>
             ) : null}
           </Link>
-        ) : (
-          <div key={`action-${index}`} className="flex flex-1 items-center justify-center">
-            <button
-              type="button"
-              onClick={() => (can.writeIssues(caps) ? openCreateIssue() : setCommandOpen(true))}
-              className="-mt-5 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-95"
-              aria-label={can.writeIssues(caps) ? 'Create issue' : 'Search'}
-            >
-              {can.writeIssues(caps) ? (
-                <Plus className="size-6" />
-              ) : (
-                <Search className="size-5" />
-              )}
-            </button>
-          </div>
-        )
-      )}
+      ))}
     </nav>
   )
 }

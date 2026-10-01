@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Flag, Play, Plus, Zap } from 'lucide-react'
+import { ArrowRight, Flag, Play, Zap } from 'lucide-react'
 import Link from 'next/link'
 import * as React from 'react'
 
@@ -36,7 +36,6 @@ export default function ProjectOverviewPage() {
   const { caps } = useWorkspaceContext()
   const { data: issues, isLoading } = useProjectIssues(projectId)
   const { data: sprints } = useSprints(projectId)
-  const openCreateIssue = useUiStore((state) => state.openCreateIssue)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
 
   const all = issues ?? []
@@ -217,16 +216,6 @@ export default function ProjectOverviewPage() {
               <CardTitle>Epics</CardTitle>
               <CardDescription>Larger bodies of work and their progress</CardDescription>
             </div>
-            {can.writeIssues(caps) ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => openCreateIssue({ projectId, type: 'epic' })}
-              >
-                <Plus />
-                New epic
-              </Button>
-            ) : null}
           </CardHeader>
 
           {isLoading ? (
@@ -324,18 +313,6 @@ export default function ProjectOverviewPage() {
                 description="Create the first issue to get this project moving."
                 compact
                 className="border-0 bg-transparent"
-                action={
-                  can.writeIssues(caps) ? (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => openCreateIssue({ projectId })}
-                    >
-                      <Plus />
-                      Create issue
-                    </Button>
-                  ) : null
-                }
               />
             </div>
           )}

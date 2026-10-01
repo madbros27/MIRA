@@ -67,10 +67,11 @@ export function Topbar() {
               variant="primary"
               size="sm"
               onClick={() => openCreateIssue()}
-              className="hidden sm:inline-flex"
+              className="inline-flex size-9 shrink-0 items-center justify-center p-0 sm:h-8 sm:w-auto sm:px-3"
             >
               <Plus />
-              Create Issue
+              <span className="hidden sm:inline">Create Issue</span>
+              <span className="sr-only sm:hidden">Create Issue</span>
             </Button>
           </Tooltip>
         ) : null}
