@@ -265,8 +265,8 @@ function InviteMultipleDialog({
   }
 
   function rowStatus(row: InviteRow, index: number): string | null {
-    if (!row.email.trim() || !row.fullName.trim() || !row.positionId) {
-      return 'Email, name, and position are required.'
+    if (!row.email.trim() || !row.positionId) {
+      return 'Email and position are required.'
     }
     if (!emailPattern.test(row.email.trim())) return 'Enter a valid email address.'
     if (!validPositionIds.has(row.positionId)) return 'Choose a current workspace position.'
@@ -347,7 +347,7 @@ function InviteMultipleDialog({
                   <thead className="bg-muted/60 text-xs text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2.5 font-medium">Email</th>
-                      <th className="px-3 py-2.5 font-medium">Name</th>
+                      <th className="px-3 py-2.5 font-medium">Name (optional)</th>
                       <th className="px-3 py-2.5 font-medium">Position</th>
                       <th className="w-12 px-2 py-2.5" />
                     </tr>

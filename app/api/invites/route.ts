@@ -34,10 +34,11 @@ async function postSingleInvite(
   const workspaceId = body.workspaceId?.trim()
   const email = body.email?.trim().toLowerCase()
   const positionId = body.positionId?.trim()
+  const fullName = body.fullName?.trim() || null
 
-  if (!workspaceId || !email || !positionId || !body.fullName?.trim()) {
+  if (!workspaceId || !email || !positionId) {
     return NextResponse.json(
-      { error: 'Workspace, email, name, and position are required' },
+      { error: 'Workspace, email, and position are required' },
       { status: 400 }
     )
   }
@@ -163,7 +164,7 @@ async function postSingleInvite(
       workspace_id: workspaceId,
       email,
       position_id: positionId,
-      full_name: body.fullName.trim(),
+      full_name: fullName,
       invited_by: user.id,
     })
     .select('id, token, email, position_id')
@@ -213,7 +214,7 @@ async function postSingleInvite(
         email,
         password: temporaryPassword,
         email_confirm: true,
-        user_metadata: { full_name: body.fullName.trim() },
+        user_metadata: fullName ? { full_name: fullName } : undefined,
         app_metadata: { mira_must_change_password: true },
       })
       if (createError) {
@@ -228,7 +229,7 @@ async function postSingleInvite(
 
   const loginUrl = absoluteUrl('/')
   const bodyText = [
-    `Hello ${body.fullName.trim()},`,
+    fullName ? `Hello ${fullName},` : 'Hello,',
     '',
     `You have been invited to MIRA as a ${position.name}.`,
     '',
@@ -252,7 +253,7 @@ async function postSingleInvite(
     ok: true,
     inviteId: invite.id,
     inviteUrl,
-    fullName: body.fullName.trim(),
+    fullName,
     positionName: position.name,
     temporaryPasswordCreated: temporaryAccountCreated,
     mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Your MIRA Account')}&body=${encodeURIComponent(bodyText)}`,
@@ -357,7 +358,7 @@ export async function POST(request: NextRequest) {
   const validPositionIds = new Set(positionNames.keys())
 
   for (const entry of parsed) {
-    if (!entry.email || !emailPattern.test(entry.email) || !entry.fullName || !entry.positionId) {
+    if (!entry.email || !emailPattern.test(entry.email) || !entry.positionId) {
       entries.push({
         ...entry,
         status: 'invalid',
