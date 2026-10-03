@@ -24,6 +24,7 @@ import type {
   PlatformStats,
 } from '@/lib/types/admin'
 import type { WorkspaceStatus } from '@/lib/types/database'
+import { getAdminSupabaseBrowserClient } from '@/lib/supabase/clients'
 import { errorMessage } from '@/lib/utils'
 
 export const ak = {
@@ -295,9 +296,17 @@ export function useCreateOwner() {
 
   return useMutation({
     mutationFn: async (input: CreateOwnerInput) => {
+      const { data: { session }, error: sessionError } =
+        await getAdminSupabaseBrowserClient().auth.getSession()
+      if (sessionError) throw sessionError
+      if (!session?.access_token) throw new Error('Not authenticated')
+
       const response = await fetch('/api/admin/owners', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify(input),
       })
       const payload = (await response.json()) as CreateOwnerResult & { error?: string }

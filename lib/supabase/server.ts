@@ -74,6 +74,16 @@ export function createSupabaseAdminClient() {
   })
 }
 
+/** Acts as a verified caller for API requests that cannot receive portal-scoped cookies. */
+export function createSupabaseUserClient(accessToken: string) {
+  return createClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  })
+}
+
 /** The current user's session user, or null. */
 export async function getSessionUser(portal: Portal) {
   const supabase = await createSupabaseServerClient(portal)

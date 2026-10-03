@@ -13,7 +13,7 @@ import { absoluteUrl } from '@/lib/supabase/env'
  * log stay on the same code path as every other admin action.
  */
 export async function POST(request: NextRequest) {
-  const guard = await requireAdminApi()
+  const guard = await requireAdminApi(request)
   if (!guard.ok) return guard.response
 
   const { supabase, service } = guard.context

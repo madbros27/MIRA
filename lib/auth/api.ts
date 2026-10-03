@@ -18,7 +18,11 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 
-import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server'
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClient,
+  createSupabaseUserClient,
+} from '@/lib/supabase/server'
 import type { Database, PlatformAdminRow } from '@/lib/types/database'
 
 export type AdminApiContext = {
@@ -30,14 +34,27 @@ export type AdminApiContext = {
   service: SupabaseClient<Database>
 }
 
-export async function requireAdminApi(): Promise<
+export async function requireAdminApi(request?: Request): Promise<
   { ok: true; context: AdminApiContext } | { ok: false; response: NextResponse }
 > {
-  const supabase = await createSupabaseServerClient('admin')
+  const authorization = request?.headers.get('authorization')
+  const bearerMatch = authorization?.match(/^Bearer ([^\s]+)$/i)
+
+  if (authorization && !bearerMatch) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }),
+    }
+  }
+
+  const accessToken = bearerMatch?.[1]
+  const supabase = accessToken
+    ? createSupabaseUserClient(accessToken)
+    : await createSupabaseServerClient('admin')
 
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getUser(accessToken)
 
   if (!user) {
     return {
