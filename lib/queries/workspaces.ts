@@ -498,62 +498,30 @@ export function useInvites(workspaceId?: string) {
   })
 }
 
-/**
- * Invites go through a route handler: the email is sent with the service-role
- * key, which must never reach the browser.
- */
-export function useInviteMember(workspaceId: string) {
-  const client = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (input: {
-      email: string
-      positionId: string
-      fullName?: string
-      createTemporaryPassword?: boolean
-    }) => {
-      const response = await fetch('/api/invites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, ...input }),
-      })
-      const payload = (await response.json()) as {
-        ok?: boolean
-        error?: string
-        inviteUrl?: string
-        emailed?: boolean
-        temporaryPasswordCreated?: boolean
-        mailtoUrl?: string
-      }
-      if (!response.ok || payload.error) {
-        throw new Error(payload.error ?? 'Could not send the invitation')
-      }
-      return payload
-    },
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: qk.invites(workspaceId) })
-      client.invalidateQueries({ queryKey: qk.members(workspaceId) })
-    },
-  })
+export type BulkInviteEntry = {
+  rowId: string
+  email: string
+  fullName: string
+  positionId: string
 }
 
-export type BulkInviteResult = {
-  email: string
-  status:
-    | 'invited'
-    | 'already_member'
-    | 'already_invited'
-    | 'invalid'
-    | 'duplicate'
-    | 'failed'
+export type BulkInviteResult = BulkInviteEntry & {
+  status: 'ready' | 'invited' | 'already_member' | 'already_invited' | 'invalid' | 'duplicate' | 'no_seats' | 'failed'
   message?: string
+  positionName?: string
+  mailtoUrl?: string
+  temporaryPasswordCreated?: boolean
 }
 
 export function useBulkInviteMembers(workspaceId: string) {
   const client = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: { emails: string[]; positionId: string }) => {
+    mutationFn: async (input: {
+      entries: BulkInviteEntry[]
+      preview: boolean
+      createTemporaryPassword: boolean
+    }) => {
       const response = await fetch('/api/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

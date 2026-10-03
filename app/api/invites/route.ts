@@ -4,19 +4,16 @@ import { randomBytes } from 'node:crypto'
 import { absoluteUrl } from '@/lib/supabase/env'
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server'
 
-/**
- * Create a workspace invitation.
- *
- * The row is inserted as the signed-in user, so RLS decides whether they are
- * allowed to invite at all (`member.invite`). Only the email delivery uses
- * the service-role key, which is why this lives in a route handler instead of
- * the browser.
- *
- * The invitation carries a *position*, not a role: what the person will be
- * able to do is resolved from that position's capability checklist when they
- * accept.
- */
-async function postSingleInvite(request: NextRequest) {
+type InvitationEntry = {
+  email: string
+  fullName: string
+  positionId: string
+}
+
+async function postSingleInvite(
+  request: NextRequest,
+  usedTemporaryPasswords = new Set<string>()
+) {
   let body: {
     workspaceId?: string
     email?: string
@@ -30,13 +27,17 @@ async function postSingleInvite(request: NextRequest) {
     return NextResponse.json({ error: 'Expected a JSON body' }, { status: 400 })
   }
 
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 })
+  }
+
   const workspaceId = body.workspaceId?.trim()
   const email = body.email?.trim().toLowerCase()
-  const positionId = body.positionId?.trim() || null
+  const positionId = body.positionId?.trim()
 
-  if (!workspaceId || !email) {
+  if (!workspaceId || !email || !positionId || !body.fullName?.trim()) {
     return NextResponse.json(
-      { error: 'workspaceId and email are both required' },
+      { error: 'Workspace, email, name, and position are required' },
       { status: 400 }
     )
   }
@@ -55,7 +56,11 @@ async function postSingleInvite(request: NextRequest) {
   // Refuse early when the workspace is out of seats. The database enforces
   // this too, but failing here means we do not leave a dangling invitation
   // that can never be accepted.
-  const [{ data: workspace }, { count: seatsUsed }, { count: pending }] = await Promise.all([
+  const [
+    { data: workspace, error: workspaceError },
+    { count: seatsUsed, error: seatsError },
+    { count: pending, error: pendingError },
+  ] = await Promise.all([
     supabase.from('workspaces').select('name, seat_limit, status').eq('id', workspaceId).maybeSingle(),
     supabase
       .from('workspace_members')
@@ -69,6 +74,12 @@ async function postSingleInvite(request: NextRequest) {
       .eq('status', 'pending'),
   ])
 
+  if (workspaceError || seatsError || pendingError) {
+    return NextResponse.json(
+      { error: 'Could not validate workspace or seat availability' },
+      { status: 500 }
+    )
+  }
   if (!workspace) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   }
@@ -78,13 +89,31 @@ async function postSingleInvite(request: NextRequest) {
       { status: 409 }
     )
   }
+  const { data: position, error: positionError } = await supabase
+    .from('positions')
+    .select('id, name')
+    .eq('workspace_id', workspaceId)
+    .eq('id', positionId)
+    .maybeSingle()
+  if (positionError) {
+    return NextResponse.json({ error: 'Could not validate position' }, { status: 500 })
+  }
+  if (!position) {
+    return NextResponse.json(
+      { error: 'Select a valid position in this workspace' },
+      { status: 400 }
+    )
+  }
   // Already a member? Nothing to do.
-  const { data: existingMember } = await supabase
+  const { data: existingMember, error: memberError } = await supabase
     .from('workspace_members')
     .select('user_id, profile:profiles!workspace_members_user_id_fkey(email)')
     .eq('workspace_id', workspaceId)
     .limit(1000)
 
+  if (memberError) {
+    return NextResponse.json({ error: 'Could not check workspace membership' }, { status: 500 })
+  }
   const alreadyMember = (existingMember ?? []).some(
     (row) =>
       (row as unknown as { profile: { email: string } | null }).profile?.email?.toLowerCase() ===
@@ -134,7 +163,7 @@ async function postSingleInvite(request: NextRequest) {
       workspace_id: workspaceId,
       email,
       position_id: positionId,
-      full_name: body.fullName?.trim() || null,
+      full_name: body.fullName.trim(),
       invited_by: user.id,
     })
     .select('id, token, email, position_id')
@@ -176,12 +205,15 @@ async function postSingleInvite(request: NextRequest) {
     }
 
     if (!existingUserId) {
-      temporaryPassword = `Mira-${randomBytes(18).toString('base64url')}`
+      do {
+        temporaryPassword = `Mira-${randomBytes(18).toString('base64url')}`
+      } while (usedTemporaryPasswords.has(temporaryPassword))
+      usedTemporaryPasswords.add(temporaryPassword)
       const { error: createError } = await admin.auth.admin.createUser({
         email,
         password: temporaryPassword,
         email_confirm: true,
-        user_metadata: body.fullName?.trim() ? { full_name: body.fullName.trim() } : undefined,
+        user_metadata: { full_name: body.fullName.trim() },
         app_metadata: { mira_must_change_password: true },
       })
       if (createError) {
@@ -194,115 +226,69 @@ async function postSingleInvite(request: NextRequest) {
     }
   }
 
-  const authRedirectUrl = absoluteUrl(
-    `/auth/callback?next=${encodeURIComponent(`/invite/${invite.token}`)}`
-  )
-
-  // Try to email the invitation. This needs the service-role key and only
-  // works for addresses that do not have an account yet — everyone else simply
-  // signs in and the invite is claimed automatically.
-  let emailed = false
-  let emailError: string | null = null
-
-  try {
-    if (createTemporaryPassword && temporaryAccountCreated && temporaryPassword) {
-      const loginUrl = absoluteUrl(`/login?next=${encodeURIComponent(`/invite/${invite.token}`)}`)
-      const bodyText = [
-        'Welcome to MIRA',
-        '',
-        `Workspace: ${workspace.name}`,
-        `MIRA login URL: ${loginUrl}`,
-        `Login email: ${email}`,
-        `Temporary password: ${temporaryPassword}`,
-        '',
-        'Please change your password after your first login.',
-      ].join('\n')
-
-      return NextResponse.json({
-        ok: true,
-        inviteId: invite.id,
-        inviteUrl,
-        temporaryPasswordCreated: true,
-        mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('MIRA Workspace Invitation')}&body=${encodeURIComponent(bodyText)}`,
-      })
-    }
-
-    if (existingAccountInTemporaryMode) {
-      const loginUrl = absoluteUrl(`/login?next=${encodeURIComponent(`/invite/${invite.token}`)}`)
-      const bodyText = [
-        'Welcome to MIRA',
-        '',
-        `Workspace: ${workspace.name}`,
-        `MIRA login URL: ${loginUrl}`,
-        `Login email: ${email}`,
-        '',
-        'Please sign in with your existing MIRA password to join this workspace.',
-      ].join('\n')
-
-      return NextResponse.json({
-        ok: true,
-        inviteId: invite.id,
-        inviteUrl,
-        temporaryPasswordCreated: false,
-        mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('MIRA Workspace Invitation')}&body=${encodeURIComponent(bodyText)}`,
-      })
-    }
-
-    const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: authRedirectUrl,
-    })
-    if (inviteError) throw inviteError
-
-    emailed = true
-  } catch (caught) {
-    emailError =
-      caught instanceof Error ? caught.message : 'Email delivery is not configured'
-  }
-
+  const loginUrl = absoluteUrl('/')
+  const bodyText = [
+    `Hello ${body.fullName.trim()},`,
+    '',
+    `You have been invited to MIRA as a ${position.name}.`,
+    '',
+    'Login:',
+    loginUrl,
+    '',
+    'Email:',
+    email,
+    temporaryPassword
+      ? `\nTemporary password:\n${temporaryPassword}\n\nPlease change your password after logging in.`
+      : existingAccountInTemporaryMode
+        ? '\nSign in using your existing MIRA password.'
+        : '',
+    '',
+    'Join workspace:',
+    inviteUrl,
+  ]
+    .filter(Boolean)
+    .join('\n')
   return NextResponse.json({
     ok: true,
     inviteId: invite.id,
     inviteUrl,
-    emailed,
-    temporaryPasswordCreated: false,
-    // Not an error for the caller: the link can always be shared manually.
-    emailNotice: emailed ? null : emailError,
+    fullName: body.fullName.trim(),
+    positionName: position.name,
+    temporaryPasswordCreated: temporaryAccountCreated,
+    mailtoUrl: `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Your MIRA Account')}&body=${encodeURIComponent(bodyText)}`,
   })
 }
 
-/**
- * Bulk invitations are owner-only. Each recipient is passed through the
- * existing single-invitation flow so seat checks, RLS, invite creation and
- * email delivery retain the same behavior.
- */
 export async function POST(request: NextRequest) {
-  let body: unknown
-  try {
-    body = await request.clone().json()
-  } catch {
-    return postSingleInvite(request)
-  }
-
-  if (
-    !body ||
-    typeof body !== 'object' ||
-    !('emails' in body) ||
-    !Array.isArray(body.emails)
-  ) {
-    return postSingleInvite(request)
-  }
-
-  const input = body as {
+  let body: {
     workspaceId?: unknown
-    emails: unknown[]
-    positionId?: unknown
+    entries?: unknown
+    preview?: unknown
+    createTemporaryPassword?: unknown
   }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Expected a JSON body' }, { status: 400 })
+  }
+
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 })
+  }
+
   const workspaceId =
-    typeof input.workspaceId === 'string' ? input.workspaceId.trim() : ''
-  const positionId =
-    typeof input.positionId === 'string' ? input.positionId.trim() : ''
-  if (!workspaceId) {
-    return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 })
+    typeof body.workspaceId === 'string' ? body.workspaceId.trim() : ''
+  if (!workspaceId || !Array.isArray(body.entries)) {
+    return NextResponse.json(
+      { error: 'workspaceId and invitation entries are required' },
+      { status: 400 }
+    )
+  }
+  if (body.entries.length > 100) {
+    return NextResponse.json(
+      { error: 'Invite up to 100 people in one batch' },
+      { status: 400 }
+    )
   }
 
   const supabase = await createSupabaseServerClient('tenant')
@@ -333,69 +319,205 @@ export async function POST(request: NextRequest) {
   }
 
   const seen = new Set<string>()
-  const results: {
-    email: string
-    status: 'invited' | 'already_member' | 'already_invited' | 'invalid' | 'duplicate' | 'failed'
+  const entries: (InvitationEntry & {
+    rowId: string
+    status: string
     message?: string
-  }[] = []
+    positionName?: string
+    mailtoUrl?: string
+    temporaryPasswordCreated?: boolean
+  })[] = []
+  const rawEntries = body.entries as unknown[]
+  const parsed = rawEntries.map((raw) => {
+    const entry =
+      raw && typeof raw === 'object'
+        ? (raw as Record<string, unknown>)
+        : {}
+    return {
+      rowId: typeof entry.rowId === 'string' ? entry.rowId : '',
+      email: typeof entry.email === 'string' ? entry.email.trim().toLowerCase() : '',
+      fullName: typeof entry.fullName === 'string' ? entry.fullName.trim() : '',
+      positionId: typeof entry.positionId === 'string' ? entry.positionId.trim() : '',
+    }
+  })
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  const positionIds = [...new Set(parsed.map((entry) => entry.positionId).filter(Boolean))]
+  const { data: validPositions, error: positionsError } = positionIds.length
+    ? await supabase
+        .from('positions')
+        .select('id, name')
+        .eq('workspace_id', workspaceId)
+        .in('id', positionIds)
+    : { data: [], error: null }
+  if (positionsError) {
+    return NextResponse.json({ error: 'Could not validate workspace positions' }, { status: 500 })
+  }
+  const positionNames = new Map((validPositions ?? []).map((position) => [position.id, position.name]))
+  const validPositionIds = new Set(positionNames.keys())
+
+  for (const entry of parsed) {
+    if (!entry.email || !emailPattern.test(entry.email) || !entry.fullName || !entry.positionId) {
+      entries.push({
+        ...entry,
+        status: 'invalid',
+        positionName: positionNames.get(entry.positionId),
+        message: 'Complete all fields with a valid email.',
+      })
+    } else if (seen.has(entry.email)) {
+      entries.push({
+        ...entry,
+        status: 'duplicate',
+        positionName: positionNames.get(entry.positionId),
+        message: 'Duplicate email address.',
+      })
+    } else if (!validPositionIds.has(entry.positionId)) {
+      entries.push({ ...entry, status: 'invalid', message: 'Select a valid workspace position.' })
+      seen.add(entry.email)
+    } else {
+      entries.push({
+        ...entry,
+        status: 'ready',
+        positionName: positionNames.get(entry.positionId),
+      })
+      seen.add(entry.email)
+    }
+  }
+
+  const emails = [...new Set(entries.filter((entry) => entry.status === 'ready').map((entry) => entry.email))]
+  const [{ data: members, error: membersError }, { data: pendingInvites, error: invitesError }] =
+    emails.length
+      ? await Promise.all([
+          supabase
+            .from('workspace_members')
+            .select('profile:profiles!workspace_members_user_id_fkey(email)')
+            .eq('workspace_id', workspaceId),
+          supabase
+            .from('workspace_invites')
+            .select('email')
+            .eq('workspace_id', workspaceId)
+            .eq('status', 'pending')
+            .in('email', emails),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }]
+  if (membersError || invitesError) {
+    return NextResponse.json({ error: 'Could not check existing workspace invitations' }, { status: 500 })
+  }
+  const memberEmails = new Set(
+    (members ?? []).map(
+      (member) =>
+        (member as unknown as { profile: { email: string } | null }).profile?.email?.toLowerCase()
+    )
+  )
+  const pendingEmails = new Set((pendingInvites ?? []).map((invite) => invite.email.toLowerCase()))
+  for (const entry of entries) {
+    if (entry.status !== 'ready') continue
+    if (memberEmails.has(entry.email)) {
+      entry.status = 'already_member'
+      entry.message = 'Already a member'
+    } else if (pendingEmails.has(entry.email)) {
+      entry.status = 'already_invited'
+      entry.message = 'Invitation already pending'
+    }
+  }
+
+  const { data: workspace, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('seat_limit, status')
+    .eq('id', workspaceId)
+    .single()
+  if (workspaceError || !workspace) {
+    return NextResponse.json({ error: 'Could not validate workspace seat availability' }, { status: 500 })
+  }
+  if (workspace.status !== 'active') {
+    return NextResponse.json(
+      { error: 'This workspace is not currently accepting new members' },
+      { status: 409 }
+    )
+  }
+  const [
+    { count: seatsUsed, error: seatsError },
+    { count: pendingCount, error: pendingCountError },
+  ] = await Promise.all([
+    supabase
+      .from('workspace_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active'),
+    supabase
+      .from('workspace_invites')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'pending'),
+  ])
+  if (seatsError || pendingCountError) {
+    return NextResponse.json({ error: 'Could not validate workspace seat availability' }, { status: 500 })
+  }
+  let availableSeats = Math.max(
+    0,
+    (workspace?.seat_limit ?? 0) - (seatsUsed ?? 0) - (pendingCount ?? 0)
+  )
+  for (const entry of entries) {
+    if (entry.status !== 'ready') continue
+    if (availableSeats <= 0) {
+      entry.status = 'no_seats'
+      entry.message = 'No workspace seats are available.'
+    } else {
+      availableSeats -= 1
+    }
+  }
+
+  if (body.preview === true) {
+    return NextResponse.json({ results: entries })
+  }
+
   const headers = new Headers(request.headers)
   headers.set('content-type', 'application/json')
   headers.delete('content-length')
+  const usedTemporaryPasswords = new Set<string>()
 
-  for (const rawEmail of input.emails) {
-    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : ''
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      results.push({ email: email || String(rawEmail), status: 'invalid' })
-      continue
-    }
-    if (seen.has(email)) {
-      results.push({ email, status: 'duplicate' })
-      continue
-    }
-    seen.add(email)
-
+  for (const entry of entries) {
+    if (entry.status !== 'ready') continue
     try {
       const singleRequest = new NextRequest(request.url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ workspaceId, email, positionId }),
+        body: JSON.stringify({
+          workspaceId,
+          email: entry.email,
+          fullName: entry.fullName,
+          positionId: entry.positionId,
+          createTemporaryPassword: body.createTemporaryPassword === true,
+          rowId: entry.rowId,
+        }),
       })
-      const response = await postSingleInvite(singleRequest)
+      const response = await postSingleInvite(singleRequest, usedTemporaryPasswords)
       const payload = (await response.json()) as {
         error?: string
-        emailNotice?: string | null
+        mailtoUrl?: string
+        positionName?: string
+        temporaryPasswordCreated?: boolean
       }
       if (response.ok) {
-        results.push({
-          email,
-          status: 'invited',
-          ...(payload.emailNotice
-            ? { message: 'Invitation created, but email delivery failed.' }
-            : {}),
-        })
+        entry.status = 'invited'
+        entry.mailtoUrl = payload.mailtoUrl
+        entry.positionName = payload.positionName
+        entry.temporaryPasswordCreated = payload.temporaryPasswordCreated
       } else if (/already a member/i.test(payload.error ?? '')) {
-        results.push({
-          email,
-          status: 'already_member',
-          message: payload.error,
-        })
+        entry.status = 'already_member'
+        entry.message = payload.error
       } else if (/pending invitation/i.test(payload.error ?? '')) {
-        results.push({
-          email,
-          status: 'already_invited',
-          message: payload.error,
-        })
+        entry.status = 'already_invited'
+        entry.message = 'Invitation already pending'
       } else {
-        results.push({
-          email,
-          status: 'failed',
-          message: payload.error ?? 'Invitation failed',
-        })
+        entry.status = 'failed'
+        entry.message = payload.error ?? 'Invitation failed'
       }
     } catch {
-      results.push({ email, status: 'failed', message: 'Invitation failed' })
+      entry.status = 'failed'
+      entry.message = 'Invitation failed'
     }
   }
 
-  return NextResponse.json({ results })
+  return NextResponse.json({ results: entries })
 }

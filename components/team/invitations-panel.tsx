@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Mail, MailPlus, Users, X } from 'lucide-react'
+import { Check, Copy, Mail, Plus, Trash2, X } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -21,19 +21,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, Input } from '@/components/ui/input'
+import { Input } from '@/components/ui/input'
 import { Badge, Card, EmptyState, Skeleton } from '@/components/ui/primitives'
 import { formatRelative } from '@/lib/format'
 import { can, type Grants } from '@/lib/permissions'
 import {
-  useInviteMember,
   useBulkInviteMembers,
+  type BulkInviteEntry,
   type BulkInviteResult,
   useInvites,
   usePositions,
   useRevokeInvite,
 } from '@/lib/queries/workspaces'
 import { errorMessage } from '@/lib/utils'
+
+type InviteRow = BulkInviteEntry & { rowId: string }
+type InviteStage = 'form' | 'review' | 'prepared'
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const statusLabel: Record<BulkInviteResult['status'], string> = {
+  ready: 'Ready',
+  invited: 'Invitation ready',
+  already_member: 'Already a member',
+  already_invited: 'Invitation already pending',
+  invalid: 'Invalid row',
+  duplicate: 'Duplicate email',
+  no_seats: 'No seats available',
+  failed: 'Invitation failed',
+}
 
 export function InvitationsPanel({
   workspaceId,
@@ -49,11 +65,11 @@ export function InvitationsPanel({
   seatLimit: number
 }) {
   const { data: invites, isLoading } = useInvites(workspaceId)
+  const { data: positions } = usePositions(workspaceId)
   const revoke = useRevokeInvite(workspaceId)
   const [inviteOpen, setInviteOpen] = React.useState(false)
-  const [bulkInviteOpen, setBulkInviteOpen] = React.useState(false)
 
-  const mayInvite = can.inviteMembers(caps)
+  const mayInvite = isOwner && can.inviteMembers(caps)
   const pending = (invites ?? []).filter((invite) => invite.status === 'pending')
   const seatsLeft = seatLimit - seatsUsed - pending.length
 
@@ -75,22 +91,13 @@ export function InvitationsPanel({
           )}
         </p>
         {mayInvite ? (
-          <div className="flex gap-2">
-            {isOwner ? (
-              <Button
-                variant="secondary"
-                onClick={() => setBulkInviteOpen(true)}
-                disabled={seatsLeft <= 0}
-              >
-                <Users aria-hidden />
-                Add Members
-              </Button>
-            ) : null}
-            <Button variant="primary" onClick={() => setInviteOpen(true)} disabled={seatsLeft <= 0}>
-              <MailPlus aria-hidden />
-              Invite someone
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            onClick={() => setInviteOpen(true)}
+          >
+            <Plus aria-hidden />
+            Invite Multiple
+          </Button>
         ) : null}
       </div>
 
@@ -109,16 +116,8 @@ export function InvitationsPanel({
           title="No invitations"
           description={
             mayInvite
-              ? 'Invite a colleague by email. They pick a position when you send it, and land straight in the workspace once they accept.'
+              ? 'Prepare invitations for one or more colleagues. Each person can have an individual position and email draft.'
               : 'Nobody has been invited yet.'
-          }
-          action={
-            mayInvite ? (
-              <Button variant="primary" onClick={() => setInviteOpen(true)} disabled={seatsLeft <= 0}>
-                <MailPlus aria-hidden />
-                Invite someone
-              </Button>
-            ) : undefined
           }
         />
       ) : (
@@ -194,465 +193,389 @@ export function InvitationsPanel({
         </Card>
       )}
 
-      <InviteDialog
-        workspaceId={workspaceId}
-        open={inviteOpen}
-        onOpenChange={setInviteOpen}
-      />
-      {isOwner ? (
-        <BulkInviteDialog
+      {mayInvite ? (
+        <InviteMultipleDialog
           workspaceId={workspaceId}
-          open={bulkInviteOpen}
-          onOpenChange={setBulkInviteOpen}
+          positions={positions ?? []}
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
         />
       ) : null}
     </div>
   )
 }
 
-type ParsedRecipient = {
-  email: string
-  status: 'ready' | 'invalid' | 'duplicate'
-}
-
-function parseRecipients(input: string): ParsedRecipient[] {
-  const seen = new Set<string>()
-  return input
-    .split(/[\r\n,;]+/)
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .map((email) => {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return { email, status: 'invalid' as const }
-      }
-      if (seen.has(email)) return { email, status: 'duplicate' as const }
-      seen.add(email)
-      return { email, status: 'ready' as const }
-    })
-}
-
-const inviteResultLabel: Record<BulkInviteResult['status'], string> = {
-  invited: 'Invited',
-  already_member: 'Already a member',
-  already_invited: 'Invitation pending',
-  invalid: 'Invalid email',
-  duplicate: 'Duplicate',
-  failed: 'Invitation failed',
-}
-
-function BulkInviteDialog({
+function InviteMultipleDialog({
   workspaceId,
+  positions,
   open,
   onOpenChange,
 }: {
   workspaceId: string
+  positions: { id: string; name: string; slug: string | null }[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const bulkInvite = useBulkInviteMembers(workspaceId)
-  const { data: positions } = usePositions(workspaceId)
-  const [input, setInput] = React.useState('')
-  const [positionId, setPositionId] = React.useState('')
-  const [results, setResults] = React.useState<BulkInviteResult[] | null>(null)
-  const parsed = React.useMemo(() => parseRecipients(input), [input])
-  const ready = parsed.filter((recipient) => recipient.status === 'ready')
-  const invalidCount = parsed.filter((recipient) => recipient.status === 'invalid').length
-  const duplicateCount = parsed.filter((recipient) => recipient.status === 'duplicate').length
+  const mutation = useBulkInviteMembers(workspaceId)
+  const [rows, setRows] = React.useState<InviteRow[]>([])
+  const [stage, setStage] = React.useState<InviteStage>('form')
+  const [results, setResults] = React.useState<BulkInviteResult[]>([])
+  const [temporaryPassword, setTemporaryPassword] = React.useState(true)
+  const [openedRows, setOpenedRows] = React.useState<Set<string>>(() => new Set())
+  const sequence = React.useRef(0)
+  const validPositionIds = React.useMemo(
+    () => new Set(positions.map((position) => position.id)),
+    [positions]
+  )
 
-  React.useEffect(() => {
-    if (positionId || !positions?.length) return
-    const fallback =
-      positions.find((position) => position.slug === 'member') ?? positions[0]
-    setPositionId(fallback.id)
-  }, [positions, positionId])
-
-  function close(nextOpen: boolean) {
-    onOpenChange(nextOpen)
-    if (!nextOpen) {
-      setInput('')
-      setResults(null)
-      setPositionId('')
+  function newRow(): InviteRow {
+    sequence.current += 1
+    return {
+      rowId: `invite-${sequence.current}`,
+      email: '',
+      fullName: '',
+      positionId: '',
     }
   }
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  React.useEffect(() => {
+    if (!open || !positions.length) return
+    setRows((current) => (current.length ? current : [newRow()]))
+  }, [open, positions.length])
+
+  function reset(nextOpen: boolean) {
+    if (mutation.isPending && !nextOpen) return
+    onOpenChange(nextOpen)
+    if (!nextOpen) {
+      setRows([])
+      setStage('form')
+      setResults([])
+      setTemporaryPassword(true)
+      setOpenedRows(new Set())
+      sequence.current = 0
+    }
+  }
+
+  function updateRow(rowId: string, patch: Partial<InviteRow>) {
+    setRows((current) =>
+      current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row))
+    )
+    setStage('form')
+    setResults([])
+  }
+
+  function rowStatus(row: InviteRow, index: number): string | null {
+    if (!row.email.trim() || !row.fullName.trim() || !row.positionId) {
+      return 'Email, name, and position are required.'
+    }
+    if (!emailPattern.test(row.email.trim())) return 'Enter a valid email address.'
+    if (!validPositionIds.has(row.positionId)) return 'Choose a current workspace position.'
+    if (
+      rows
+        .slice(0, index)
+        .some((other) => other.email.trim().toLowerCase() === row.email.trim().toLowerCase())
+    ) {
+      return 'This email is duplicated in another row.'
+    }
+    return null
+  }
+
+  const readyRows = results.filter((result) => result.status === 'ready')
+  const preparedRows = results.filter(
+    (result) => result.status === 'invited' && result.mailtoUrl
+  )
+  const remainingRows = preparedRows.filter((result) => !openedRows.has(result.rowId))
+  const firstRemaining = remainingRows[0]
+
+  async function review() {
     try {
-      const sentResults = await bulkInvite.mutateAsync({
-        emails: ready.map((recipient) => recipient.email),
-        positionId,
+      const preview = await mutation.mutateAsync({
+        entries: rows.map(({ rowId, ...entry }) => ({ ...entry, rowId })),
+        preview: true,
+        createTemporaryPassword: false,
       })
-      const byEmail = new Map(sentResults.map((result) => [result.email, result]))
-      const allResults = parsed.map((recipient): BulkInviteResult => {
-        if (recipient.status === 'invalid') {
-          return { email: recipient.email, status: 'invalid' }
-        }
-        if (recipient.status === 'duplicate') {
-          return { email: recipient.email, status: 'duplicate' }
-        }
-        return byEmail.get(recipient.email) ?? {
-          email: recipient.email,
-          status: 'failed',
-          message: 'No result was returned for this invitation',
-        }
-      })
-      setResults(allResults)
-      const invitedCount = allResults.filter((result) => result.status === 'invited').length
-      toast.success('Invitation processing complete', {
-        description: `${invitedCount} invitation${invitedCount === 1 ? '' : 's'} created`,
-      })
+      setResults(preview)
+      setStage('review')
     } catch (caught) {
-      toast.error('Could not process invitations', {
+      toast.error('Could not review invitations', {
         description: errorMessage(caught),
       })
     }
   }
 
+  async function createInvitations() {
+    try {
+      const created = await mutation.mutateAsync({
+        entries: rows.map(({ rowId, ...entry }) => ({ ...entry, rowId })),
+        preview: false,
+        createTemporaryPassword: temporaryPassword,
+      })
+      setResults(created)
+      setStage('prepared')
+      setOpenedRows(new Set())
+      const readyCount = created.filter(
+        (result) => result.status === 'invited' && result.mailtoUrl
+      ).length
+      toast.success(`${readyCount} invitation${readyCount === 1 ? '' : 's'} ready`)
+    } catch (caught) {
+      toast.error('Could not prepare invitations', {
+        description: errorMessage(caught),
+      })
+    }
+  }
+
+  function markOpened(rowId: string) {
+    setOpenedRows((current) => new Set(current).add(rowId))
+  }
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && bulkInvite.isPending) return
-        close(nextOpen)
-      }}
-    >
-      <DialogContent>
-        <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Add Members</DialogTitle>
-            <DialogDescription>
-              Enter one email per line, or separate addresses with commas or semicolons.
-              Each invitation uses the selected position.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-4">
-            {!results ? (
-              <>
-                <Field label="Email addresses" htmlFor="bulk-invite-emails" required>
-                  <textarea
-                    id="bulk-invite-emails"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    placeholder={'member1@example.com\nmember2@example.com'}
-                    rows={5}
-                    className="w-full resize-y rounded-lg border border-input bg-surface px-3 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </Field>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <Badge variant="success">{ready.length} valid recipients</Badge>
-                  <Badge variant={invalidCount ? 'danger' : 'neutral'}>
-                    {invalidCount} invalid
-                  </Badge>
-                  <Badge variant={duplicateCount ? 'warning' : 'neutral'}>
-                    {duplicateCount} duplicates
-                  </Badge>
-                </div>
-                {parsed.length ? (
-                  <div
-                    className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2"
-                    aria-label="Review recipients"
-                  >
-                    {parsed.map((recipient, index) => (
-                      <div
-                        key={`${recipient.email}-${index}`}
-                        className="flex items-center justify-between gap-3 px-1 py-1 text-sm"
-                      >
-                        <span className="min-w-0 truncate">{recipient.email}</span>
-                        <Badge
-                          variant={
-                            recipient.status === 'ready'
-                              ? 'success'
-                              : recipient.status === 'invalid'
-                                ? 'danger'
-                                : 'warning'
-                          }
-                        >
-                          {recipient.status === 'ready'
-                            ? 'Ready'
-                            : recipient.status === 'invalid'
-                              ? 'Invalid email'
-                              : 'Duplicate'}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <Field label="Position" htmlFor="bulk-invite-position" required>
-                  <Select value={positionId} onValueChange={setPositionId}>
-                    <SelectTrigger id="bulk-invite-position">
-                      <SelectValue placeholder="Choose a position" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(positions ?? []).map((position) => (
-                        <SelectItem key={position.id} value={position.id}>
-                          {position.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </>
-            ) : (
-              <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-                {results.map((result, index) => (
-                  <div
-                    key={`${result.email}-${index}`}
-                    className="flex items-start justify-between gap-3 px-1 py-1.5 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate">{result.email}</p>
-                      {result.message ? (
-                        <p className="mt-0.5 text-xs text-muted-foreground">{result.message}</p>
-                      ) : null}
-                    </div>
-                    <Badge
-                      variant={
-                        result.status === 'invited' || result.status === 'already_member'
-                          ? 'success'
-                          : result.status === 'failed' || result.status === 'invalid'
-                            ? 'danger'
-                            : 'warning'
-                      }
-                    >
-                      {inviteResultLabel[result.status]}
-                    </Badge>
-                  </div>
-                ))}
+    <Dialog open={open} onOpenChange={reset}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>Invite Multiple Members</DialogTitle>
+          <DialogDescription>
+            Add one person per row, choose each person’s existing workspace position,
+            review the invitations, then prepare individual email drafts.
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="space-y-4">
+          {stage === 'form' ? (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[700px] text-left text-sm">
+                  <thead className="bg-muted/60 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-medium">Email</th>
+                      <th className="px-3 py-2.5 font-medium">Name</th>
+                      <th className="px-3 py-2.5 font-medium">Position</th>
+                      <th className="w-12 px-2 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map((row, index) => {
+                      const error = rowStatus(row, index)
+                      return (
+                        <tr key={row.rowId} className={error && (row.email || row.fullName || row.positionId) ? 'bg-destructive-subtle/30' : undefined}>
+                          <td className="min-w-56 px-2 py-2 align-top">
+                            <Input
+                              type="email"
+                              value={row.email}
+                              onChange={(event) => updateRow(row.rowId, { email: event.target.value })}
+                              placeholder="alice@example.com"
+                              aria-label={`Email for member ${index + 1}`}
+                              aria-invalid={Boolean(row.email && !emailPattern.test(row.email.trim()))}
+                            />
+                            {error ? (
+                              <p className="mt-1 px-1 text-xs text-destructive">{error}</p>
+                            ) : null}
+                          </td>
+                          <td className="min-w-40 px-2 py-2 align-top">
+                            <Input
+                              value={row.fullName}
+                              onChange={(event) => updateRow(row.rowId, { fullName: event.target.value })}
+                              placeholder="Full name"
+                              aria-label={`Name for member ${index + 1}`}
+                            />
+                          </td>
+                          <td className="min-w-48 px-2 py-2 align-top">
+                            <Select
+                              value={row.positionId}
+                              onValueChange={(positionId) => updateRow(row.rowId, { positionId })}
+                            >
+                              <SelectTrigger aria-label={`Position for member ${index + 1}`}>
+                                <SelectValue placeholder="Choose a position" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {positions.map((position) => (
+                                  <SelectItem key={position.id} value={position.id}>
+                                    {position.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove member row ${index + 1}`}
+                              disabled={rows.length === 1}
+                              onClick={() => setRows((current) => current.filter((item) => item.rowId !== row.rowId))}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => close(false)}
-              disabled={bulkInvite.isPending}
-            >
-              {results ? 'Done' : 'Cancel'}
-            </Button>
-            {results ? null : (
-              <Button
-                type="submit"
-                variant="primary"
-                loading={bulkInvite.isPending}
-                disabled={!ready.length || !positionId}
-              >
-                Invite {ready.length || ''} member{ready.length === 1 ? '' : 's'}
+
+              <Button type="button" variant="secondary" onClick={() => setRows((current) => [...current, newRow()])}>
+                <Plus aria-hidden />
+                Add another member
               </Button>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function InviteDialog({
-  workspaceId,
-  open,
-  onOpenChange,
-}: {
-  workspaceId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const invite = useInviteMember(workspaceId)
-  const { data: positions } = usePositions(workspaceId)
-
-  const [email, setEmail] = React.useState('')
-  const [fullName, setFullName] = React.useState('')
-  const [positionId, setPositionId] = React.useState('')
-  const [createTemporaryPassword, setCreateTemporaryPassword] = React.useState(false)
-  const [link, setLink] = React.useState<string | null>(null)
-  const [mailtoUrl, setMailtoUrl] = React.useState<string | null>(null)
-
-  // Default to the "member" position once the list arrives.
-  React.useEffect(() => {
-    if (positionId || !positions?.length) return
-    const fallback =
-      positions.find((position) => position.slug === 'member') ?? positions[0]
-    setPositionId(fallback.id)
-  }, [positions, positionId])
-
-  const selected = positions?.find((position) => position.id === positionId)
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next)
-        if (!next) {
-          setEmail('')
-          setFullName('')
-          setLink(null)
-          setMailtoUrl(null)
-          setCreateTemporaryPassword(false)
-        }
-      }}
-    >
-      <DialogContent>
-        {link ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>{mailtoUrl ? 'Invitation prepared' : 'Invitation sent'}</DialogTitle>
-              <DialogDescription>{email}</DialogDescription>
-            </DialogHeader>
-            <DialogBody className="space-y-3">
-              {mailtoUrl ? (
-                <Button asChild variant="primary" className="w-full">
-                  <a href={mailtoUrl}>
-                    <Mail />
-                    Open email draft
-                  </a>
-                </Button>
-              ) : null}
-              <Field label="Invitation link" htmlFor="invite-link">
-                <div className="flex gap-2">
-                  <Input
-                    id="invite-link"
-                    readOnly
-                    value={link}
-                    className="font-mono text-xs"
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="Copy"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(link)
-                      toast.success('Copied')
-                    }}
-                  >
-                    <Copy />
-                  </Button>
-                </div>
-              </Field>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                The link expires in 14 days.
-              </p>
-            </DialogBody>
-            <DialogFooter>
-              <Button variant="primary" onClick={() => onOpenChange(false)}>
-                Done
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault()
-              try {
-                const result = await invite.mutateAsync({
-                  email: email.trim(),
-                  positionId,
-                  fullName: fullName.trim() || undefined,
-                  createTemporaryPassword,
-                })
-                toast.success(result.mailtoUrl ? 'Invitation prepared' : result.emailed ? `Invitation emailed to ${email.trim()}` : 'Invitation created')
-                setLink(result.inviteUrl ?? null)
-                setMailtoUrl(result.mailtoUrl ?? null)
-              } catch (caught) {
-                toast.error('Could not send the invitation', {
-                  description: errorMessage(caught),
-                })
-              }
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Invite someone</DialogTitle>
-              <DialogDescription>
-                They join with the position you pick here. You can change it
-                later from the directory.
-              </DialogDescription>
-            </DialogHeader>
-
-            <DialogBody className="space-y-4">
-              <Field label="Email" htmlFor="invite-email" required>
-                <Input
-                  id="invite-email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="colleague@yourcompany.com"
-                  required
-                  autoFocus
-                />
-              </Field>
-
-              <Field label="Name" htmlFor="invite-name" hint="Optional — helps them feel expected.">
-                <Input
-                  id="invite-name"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  placeholder="Sam Rivera"
-                />
-              </Field>
-
-              <Field label="Position" htmlFor="invite-position" required>
-                <Select value={positionId} onValueChange={setPositionId}>
-                  <SelectTrigger id="invite-position">
-                    <SelectValue placeholder="Choose a position" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(positions ?? []).map((position) => (
-                      <SelectItem key={position.id} value={position.id}>
-                        {position.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              {selected ? (
-                <div className="rounded-lg bg-muted px-3 py-2.5">
-                  <p className="text-xs font-medium">
-                    {selected.name} grants {selected.capabilities.length} capabilit
-                    {selected.capabilities.length === 1 ? 'y' : 'ies'}
-                  </p>
-                  {selected.description ? (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {selected.description}
-                    </p>
-                  ) : null}
-                  <p className="mt-1.5 text-2xs text-muted-foreground">
-                    Project access is separate — add them to projects after they
-                    accept.
-                  </p>
-                </div>
-              ) : null}
 
               <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3">
                 <input
                   type="checkbox"
-                  checked={createTemporaryPassword}
-                  onChange={(event) => setCreateTemporaryPassword(event.target.checked)}
+                  checked={temporaryPassword}
+                  onChange={(event) => setTemporaryPassword(event.target.checked)}
                   className="mt-0.5 size-4 accent-primary"
                 />
                 <span>
-                  <span className="block text-sm font-medium">Create temporary password</span>
+                  <span className="block text-sm font-medium">
+                    Create temporary password for each member
+                  </span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Prepare an email draft with secure login details for a new MIRA account.
+                    A unique password is generated securely on the server for each new account.
+                    Existing accounts are never changed.
                   </span>
                 </span>
               </label>
-            </DialogBody>
+            </>
+          ) : stage === 'review' ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Check each row before creating any invitations. Rows with errors will be skipped.
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[650px] text-left text-sm">
+                  <thead className="bg-muted/60 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-medium">Email</th>
+                      <th className="px-3 py-2.5 font-medium">Name</th>
+                      <th className="px-3 py-2.5 font-medium">Position</th>
+                      <th className="px-3 py-2.5 font-medium">Review</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {results.map((result) => (
+                      <tr key={result.rowId}>
+                        <td className="px-3 py-2.5">{result.email || '—'}</td>
+                        <td className="px-3 py-2.5">{result.fullName || '—'}</td>
+                        <td className="px-3 py-2.5">{result.positionName || '—'}</td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant={result.status === 'ready' ? 'success' : 'danger'}>
+                            {statusLabel[result.status]}
+                          </Badge>
+                          {result.message ? (
+                            <p className="mt-1 text-xs text-destructive">{result.message}</p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-sm font-medium">
+                {readyRows.length} ready · {results.length - readyRows.length} need attention
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="rounded-lg border border-info/30 bg-info-subtle p-3 text-sm text-info">
+                Email drafts are ready. Send each message from your email client.
+                MIRA has not sent any email.
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold">
+                  {preparedRows.length} invitation{preparedRows.length === 1 ? '' : 's'} ready
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {remainingRows.length} {remainingRows.length === 1 ? 'email' : 'emails'} remaining
+                </p>
+              </div>
+              {firstRemaining ? (
+                <Button asChild variant="primary" className="w-full">
+                  <a
+                    href={firstRemaining.mailtoUrl}
+                    onClick={() => markOpened(firstRemaining.rowId)}
+                  >
+                    <Mail />
+                    Open Next Email
+                  </a>
+                </Button>
+              ) : null}
+              <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                {results.map((result) => (
+                  <div key={result.rowId} className="flex flex-wrap items-center gap-3 p-3">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success">
+                      {result.status === 'invited' ? <Check className="size-4" /> : <X className="size-4" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {result.fullName || result.email}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {result.positionName || result.positionId || 'Position not available'}
+                        {' · '}
+                        {result.email}
+                      </p>
+                      {result.status !== 'invited' && result.message ? (
+                        <p className="mt-1 text-xs text-destructive">{result.message}</p>
+                      ) : null}
+                    </div>
+                    {result.mailtoUrl ? (
+                      <Button asChild variant="secondary" size="sm">
+                        <a
+                          href={result.mailtoUrl}
+                          onClick={() => markOpened(result.rowId)}
+                        >
+                          <Mail />
+                          {openedRows.has(result.rowId) ? 'Open Again' : 'Open Email'}
+                        </a>
+                      </Button>
+                    ) : (
+                      <Badge variant={result.status === 'already_member' ? 'neutral' : 'danger'}>
+                        {statusLabel[result.status]}
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </DialogBody>
 
-            <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={invite.isPending}
-                disabled={!email.trim() || !positionId}
-              >
-                Send invitation
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => stage === 'review' ? setStage('form') : reset(false)}
+            disabled={mutation.isPending}
+          >
+            {stage === 'review' ? 'Back' : 'Cancel'}
+          </Button>
+          {stage === 'form' ? (
+            <Button
+              type="button"
+              variant="primary"
+              loading={mutation.isPending}
+              disabled={!rows.length || !positions.length}
+              onClick={() => void review()}
+            >
+              Review invitations
+            </Button>
+          ) : stage === 'review' ? (
+            <Button
+              type="button"
+              variant="primary"
+              loading={mutation.isPending}
+              disabled={!readyRows.length}
+              onClick={() => void createInvitations()}
+            >
+              Create {readyRows.length} invitation{readyRows.length === 1 ? '' : 's'}
+            </Button>
+          ) : (
+            <Button type="button" variant="primary" onClick={() => reset(false)}>
+              Done
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
