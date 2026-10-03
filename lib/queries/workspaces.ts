@@ -413,13 +413,20 @@ export function useUpdatePosition(workspaceId: string) {
     }) => {
       const result = await supabase
         .from('positions')
-        .update(patch)
+        .update({
+          ...patch,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
         .select('*')
         .single()
       return unwrap(result) as Position
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: qk.positions(workspaceId) }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: qk.positions(workspaceId) })
+      client.invalidateQueries({ queryKey: qk.workspaces })
+      client.invalidateQueries({ queryKey: qk.members(workspaceId) })
+    },
   })
 }
 
