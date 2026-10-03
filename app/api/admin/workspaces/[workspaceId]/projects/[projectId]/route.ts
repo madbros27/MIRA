@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server'
 import { errorResponse, requireAdminApi } from '@/lib/auth/api'
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ workspaceId: string; projectId: string }> }
 ) {
-  const auth = await requireAdminApi()
+  const auth = await requireAdminApi(request)
   if (!auth.ok) return auth.response
 
   const { workspaceId, projectId } = await params

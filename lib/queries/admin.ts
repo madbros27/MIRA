@@ -24,7 +24,7 @@ import type {
   PlatformStats,
 } from '@/lib/types/admin'
 import type { WorkspaceStatus } from '@/lib/types/database'
-import { getAdminSupabaseBrowserClient } from '@/lib/supabase/clients'
+import { fetchAdminApi } from '@/lib/supabase/admin-api'
 import { errorMessage } from '@/lib/utils'
 
 export const ak = {
@@ -241,7 +241,7 @@ export function useAdminDeleteProject() {
       workspaceId: string
       projectId: string
     }): Promise<{ warning: string | null }> => {
-      const response = await fetch(
+      const response = await fetchAdminApi(
         `/api/admin/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}`,
         { method: 'DELETE' }
       )
@@ -296,17 +296,9 @@ export function useCreateOwner() {
 
   return useMutation({
     mutationFn: async (input: CreateOwnerInput) => {
-      const { data: { session }, error: sessionError } =
-        await getAdminSupabaseBrowserClient().auth.getSession()
-      if (sessionError) throw sessionError
-      if (!session?.access_token) throw new Error('Not authenticated')
-
-      const response = await fetch('/api/admin/owners', {
+      const response = await fetchAdminApi('/api/admin/owners', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       })
       const payload = (await response.json()) as CreateOwnerResult & { error?: string }
@@ -385,7 +377,7 @@ export function useTransferWorkspace() {
 export function useSendPasswordReset() {
   return useMutation({
     mutationFn: async (email: string) => {
-      const response = await fetch('/api/admin/password-reset', {
+      const response = await fetchAdminApi('/api/admin/password-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -454,7 +446,7 @@ export function useDeleteUser() {
 
   return useMutation({
     mutationFn: async ({ userId, confirmEmail }: { userId: string; confirmEmail: string }) => {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetchAdminApi(`/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmEmail }),
@@ -514,7 +506,7 @@ export function useStartImpersonation() {
       reason: string
       minutes?: number
     }) => {
-      const response = await fetch('/api/admin/impersonate', {
+      const response = await fetchAdminApi('/api/admin/impersonate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspaceId, reason, minutes }),

@@ -16,7 +16,7 @@ import { IMPERSONATION_COOKIE } from '@/lib/auth/constants'
  * RLS write check fails regardless of what the client sends.
  */
 export async function POST(request: NextRequest) {
-  const guard = await requireAdminApi()
+  const guard = await requireAdminApi(request)
   if (!guard.ok) return guard.response
 
   const { supabase } = guard.context
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
 /** DELETE /api/admin/impersonate — end the session and drop the cookie. */
 export async function DELETE(request: NextRequest) {
-  const guard = await requireAdminApi()
+  const guard = await requireAdminApi(request)
   if (!guard.ok) return guard.response
 
   const sessionId = request.cookies.get(IMPERSONATION_COOKIE)?.value ?? null

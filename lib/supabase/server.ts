@@ -74,7 +74,7 @@ export function createSupabaseAdminClient() {
   })
 }
 
-/** Acts as a verified caller for API requests that cannot receive portal-scoped cookies. */
+/** Acts as a caller for API requests that cannot receive portal-scoped cookies. */
 export function createSupabaseUserClient(accessToken: string) {
   return createClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
     auth: { autoRefreshToken: false, persistSession: false },

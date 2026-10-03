@@ -4,6 +4,8 @@ import { Eye, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
+import { fetchAdminApi } from '@/lib/supabase/admin-api'
+
 /**
  * Shown across the top of the tenant app while a System Administrator is
  * looking at a customer's workspace.
@@ -23,6 +25,7 @@ export function ImpersonationBanner({
   const router = useRouter()
   const [remaining, setRemaining] = React.useState(() => msRemaining(expiresAt))
   const [ending, setEnding] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -36,9 +39,19 @@ export function ImpersonationBanner({
 
   async function end() {
     setEnding(true)
-    await fetch('/api/admin/impersonate', { method: 'DELETE' })
-    router.replace('/miraadmin/dashboard')
-    router.refresh()
+    setError(null)
+    try {
+      const response = await fetchAdminApi('/api/admin/impersonate', { method: 'DELETE' })
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string }
+        throw new Error(payload.error ?? 'Could not end the support session')
+      }
+      router.replace('/miraadmin/dashboard')
+      router.refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not end the support session')
+      setEnding(false)
+    }
   }
 
   return (
@@ -74,6 +87,7 @@ export function ImpersonationBanner({
         <LogOut className="size-3.5" aria-hidden />
         {ending ? 'Ending…' : 'End session'}
       </button>
+      {error ? <p role="alert" className="w-full text-xs">{error}</p> : null}
     </div>
   )
 }

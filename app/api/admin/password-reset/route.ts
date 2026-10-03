@@ -11,7 +11,7 @@ import { absoluteUrl } from '@/lib/supabase/env'
  * phone when the project has no SMTP configured.
  */
 export async function POST(request: NextRequest) {
-  const guard = await requireAdminApi()
+  const guard = await requireAdminApi(request)
   if (!guard.ok) return guard.response
 
   const { supabase, service } = guard.context

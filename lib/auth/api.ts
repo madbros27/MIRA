@@ -5,7 +5,7 @@ import 'server-only'
  *
  * The pattern in every handler is the same, and the order matters:
  *
- *   1. Authenticate as the *caller* with the anon key, so RLS applies.
+ *   1. Validate the admin-client bearer token with the anon key, so RLS applies.
  *   2. Confirm they are in `platform_admins`.
  *   3. Only then reach for the service-role client.
  *
@@ -20,7 +20,6 @@ import type { SupabaseClient, User } from '@supabase/supabase-js'
 
 import {
   createSupabaseAdminClient,
-  createSupabaseServerClient,
   createSupabaseUserClient,
 } from '@/lib/supabase/server'
 import type { Database, PlatformAdminRow } from '@/lib/types/database'
@@ -34,23 +33,21 @@ export type AdminApiContext = {
   service: SupabaseClient<Database>
 }
 
-export async function requireAdminApi(request?: Request): Promise<
+export async function requireAdminApi(request: Request): Promise<
   { ok: true; context: AdminApiContext } | { ok: false; response: NextResponse }
 > {
-  const authorization = request?.headers.get('authorization')
+  const authorization = request.headers.get('authorization')
   const bearerMatch = authorization?.match(/^Bearer ([^\s]+)$/i)
 
-  if (authorization && !bearerMatch) {
+  if (!bearerMatch) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }),
     }
   }
 
-  const accessToken = bearerMatch?.[1]
-  const supabase = accessToken
-    ? createSupabaseUserClient(accessToken)
-    : await createSupabaseServerClient('admin')
+  const accessToken = bearerMatch[1]
+  const supabase = createSupabaseUserClient(accessToken)
 
   const {
     data: { user },
