@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 
 import { absoluteUrl } from '@/lib/supabase/env'
@@ -16,7 +16,7 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/sup
  * able to do is resolved from that position's capability checklist when they
  * accept.
  */
-export async function POST(request: NextRequest) {
+async function postSingleInvite(request: NextRequest) {
   let body: {
     workspaceId?: string
     email?: string
@@ -78,15 +78,6 @@ export async function POST(request: NextRequest) {
       { status: 409 }
     )
   }
-  if ((seatsUsed ?? 0) + (pending ?? 0) >= workspace.seat_limit) {
-    return NextResponse.json(
-      {
-        error: `All ${workspace.seat_limit} seats are taken or reserved by pending invitations. Ask your MIRA administrator to raise the limit.`,
-      },
-      { status: 409 }
-    )
-  }
-
   // Already a member? Nothing to do.
   const { data: existingMember } = await supabase
     .from('workspace_members')
@@ -102,6 +93,36 @@ export async function POST(request: NextRequest) {
   if (alreadyMember) {
     return NextResponse.json(
       { error: 'That person is already a member of this workspace' },
+      { status: 409 }
+    )
+  }
+
+  const { data: pendingInvite, error: pendingInviteError } = await supabase
+    .from('workspace_invites')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('email', email)
+    .eq('status', 'pending')
+    .maybeSingle()
+
+  if (pendingInviteError) {
+    return NextResponse.json(
+      { error: 'Could not check for an existing invitation' },
+      { status: 500 }
+    )
+  }
+  if (pendingInvite) {
+    return NextResponse.json(
+      { error: 'There is already a pending invitation for that email address' },
+      { status: 409 }
+    )
+  }
+
+  if ((seatsUsed ?? 0) + (pending ?? 0) >= workspace.seat_limit) {
+    return NextResponse.json(
+      {
+        error: `All ${workspace.seat_limit} seats are taken or reserved by pending invitations. Ask your MIRA administrator to raise the limit.`,
+      },
       { status: 409 }
     )
   }
@@ -247,4 +268,134 @@ export async function POST(request: NextRequest) {
     // Not an error for the caller: the link can always be shared manually.
     emailNotice: emailed ? null : emailError,
   })
+}
+
+/**
+ * Bulk invitations are owner-only. Each recipient is passed through the
+ * existing single-invitation flow so seat checks, RLS, invite creation and
+ * email delivery retain the same behavior.
+ */
+export async function POST(request: NextRequest) {
+  let body: unknown
+  try {
+    body = await request.clone().json()
+  } catch {
+    return postSingleInvite(request)
+  }
+
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('emails' in body) ||
+    !Array.isArray(body.emails)
+  ) {
+    return postSingleInvite(request)
+  }
+
+  const input = body as {
+    workspaceId?: unknown
+    emails: unknown[]
+    positionId?: unknown
+  }
+  const workspaceId =
+    typeof input.workspaceId === 'string' ? input.workspaceId.trim() : ''
+  const positionId =
+    typeof input.positionId === 'string' ? input.positionId.trim() : ''
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 })
+  }
+
+  const supabase = await createSupabaseServerClient('tenant')
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'You need to be signed in' }, { status: 401 })
+  }
+
+  const { data: owner, error: ownerError } = await supabase
+    .from('workspace_owners')
+    .select('user_id')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (ownerError) {
+    return NextResponse.json(
+      { error: 'Could not verify workspace ownership' },
+      { status: 500 }
+    )
+  }
+  if (!owner) {
+    return NextResponse.json(
+      { error: 'Only this workspace’s Owner can invite multiple members' },
+      { status: 403 }
+    )
+  }
+
+  const seen = new Set<string>()
+  const results: {
+    email: string
+    status: 'invited' | 'already_member' | 'already_invited' | 'invalid' | 'duplicate' | 'failed'
+    message?: string
+  }[] = []
+  const headers = new Headers(request.headers)
+  headers.set('content-type', 'application/json')
+  headers.delete('content-length')
+
+  for (const rawEmail of input.emails) {
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : ''
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      results.push({ email: email || String(rawEmail), status: 'invalid' })
+      continue
+    }
+    if (seen.has(email)) {
+      results.push({ email, status: 'duplicate' })
+      continue
+    }
+    seen.add(email)
+
+    try {
+      const singleRequest = new NextRequest(request.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ workspaceId, email, positionId }),
+      })
+      const response = await postSingleInvite(singleRequest)
+      const payload = (await response.json()) as {
+        error?: string
+        emailNotice?: string | null
+      }
+      if (response.ok) {
+        results.push({
+          email,
+          status: 'invited',
+          ...(payload.emailNotice
+            ? { message: 'Invitation created, but email delivery failed.' }
+            : {}),
+        })
+      } else if (/already a member/i.test(payload.error ?? '')) {
+        results.push({
+          email,
+          status: 'already_member',
+          message: payload.error,
+        })
+      } else if (/pending invitation/i.test(payload.error ?? '')) {
+        results.push({
+          email,
+          status: 'already_invited',
+          message: payload.error,
+        })
+      } else {
+        results.push({
+          email,
+          status: 'failed',
+          message: payload.error ?? 'Invitation failed',
+        })
+      }
+    } catch {
+      results.push({ email, status: 'failed', message: 'Invitation failed' })
+    }
+  }
+
+  return NextResponse.json({ results })
 }

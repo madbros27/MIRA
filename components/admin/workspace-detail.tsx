@@ -8,11 +8,13 @@ import {
   ListChecks,
   Pencil,
   Star,
+  Trash2,
   UserPlus,
   Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import * as React from 'react'
+import { toast } from 'sonner'
 
 import { PageHeader, StatCard, UsageMeter, WorkspaceStatusPill } from './admin-ui'
 import { AuditRowList } from './audit-list'
@@ -21,6 +23,7 @@ import { EditWorkspaceDialog } from './edit-workspace-dialog'
 import { WorkspaceLifecycle } from './workspace-lifecycle'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/controls'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Avatar,
   Badge,
@@ -34,13 +37,23 @@ import {
   Skeleton,
 } from '@/components/ui/primitives'
 import { formatDate, formatDateTime, formatRelative } from '@/lib/format'
-import { adminError, useAdminWorkspace } from '@/lib/queries/admin'
-import { formatBytes } from '@/lib/utils'
+import {
+  adminError,
+  useAdminDeleteProject,
+  useAdminWorkspace,
+} from '@/lib/queries/admin'
+import { errorMessage, formatBytes } from '@/lib/utils'
 
 export function WorkspaceDetail({ workspaceId }: { workspaceId: string }) {
   const { data, isLoading, error, refetch } = useAdminWorkspace(workspaceId)
   const [editOpen, setEditOpen] = React.useState(false)
   const [assignOpen, setAssignOpen] = React.useState(false)
+  const [projectToDelete, setProjectToDelete] = React.useState<{
+    id: string
+    name: string
+    key: string
+  } | null>(null)
+  const deleteProject = useAdminDeleteProject()
 
   if (error) {
     return (
@@ -293,8 +306,8 @@ export function WorkspaceDetail({ workspaceId }: { workspaceId: string }) {
             <CardHeader>
               <CardTitle>Projects</CardTitle>
               <CardDescription>
-                Counts only. Issue content belongs to the customer — use a
-                support session if you need to look inside.
+                Projects in {workspace.name}. Deleting one project removes its
+                associated project data without affecting other projects.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -315,11 +328,37 @@ export function WorkspaceDetail({ workspaceId }: { workspaceId: string }) {
                       <code className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-2xs font-semibold">
                         {project.key}
                       </code>
-                      <p className="min-w-0 flex-1 truncate text-sm">{project.name}</p>
-                      {project.is_archived ? <Badge variant="neutral">Archived</Badge> : null}
-                      <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {project.issue_count} issues · {project.member_count} members
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{project.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {workspace.name}
+                          {owners.length
+                            ? ` · ${owners.find((owner) => owner.is_primary)?.full_name ?? owners.find((owner) => owner.is_primary)?.email ?? owners[0].email}`
+                            : ''}
+                          {' · '}Created {formatDate(project.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {project.is_archived ? <Badge variant="neutral">Archived</Badge> : null}
+                        <p className="hidden text-xs tabular-nums text-muted-foreground sm:block">
+                          {project.issue_count} issues · {project.member_count} members
+                        </p>
+                        <Button
+                          variant="destructive"
+                          size="icon-sm"
+                          aria-label={`Delete project ${project.name}`}
+                          disabled={deleteProject.isPending}
+                          onClick={() =>
+                            setProjectToDelete({
+                              id: project.id,
+                              name: project.name,
+                              key: project.key,
+                            })
+                          }
+                        >
+                          <Trash2 aria-hidden />
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -373,6 +412,34 @@ export function WorkspaceDetail({ workspaceId }: { workspaceId: string }) {
         hasPrimary={owners.some((owner) => owner.is_primary)}
         open={assignOpen}
         onOpenChange={setAssignOpen}
+      />
+      <ConfirmDialog
+        open={Boolean(projectToDelete)}
+        onOpenChange={(open) => !open && setProjectToDelete(null)}
+        title="Delete project?"
+        description="Deleting this project will permanently remove its associated project data."
+        cancelLabel="Cancel"
+        confirmLabel="Delete Project"
+        destructive
+        loading={deleteProject.isPending}
+        onConfirm={async () => {
+          if (!projectToDelete) return
+          try {
+            const result = await deleteProject.mutateAsync({
+              workspaceId: workspace.id,
+              projectId: projectToDelete.id,
+            })
+            toast.success(
+              `${projectToDelete.name} (${projectToDelete.key}) deleted`,
+              result.warning ? { description: result.warning } : undefined
+            )
+            setProjectToDelete(null)
+          } catch (caught) {
+            toast.error('Could not delete project', {
+              description: errorMessage(caught),
+            })
+          }
+        }}
       />
     </>
   )

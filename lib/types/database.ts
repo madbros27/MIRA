@@ -432,6 +432,10 @@ export type Database = {
         Args: { p_token: string }
         Returns: string
       }
+      owner_remove_workspace_member: {
+        Args: { p_workspace: string; p_member: string }
+        Returns: undefined
+      }
 
       /* --- permission helpers ------------------------------------------- */
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
@@ -510,6 +514,10 @@ export type Database = {
       admin_delete_user: {
         Args: { p_user: string; p_confirm_email: string }
         Returns: undefined
+      }
+      admin_delete_project: {
+        Args: { p_workspace: string; p_project: string }
+        Returns: string[]
       }
       admin_remove_owner: {
         Args: { p_workspace: string; p_user: string }

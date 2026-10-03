@@ -229,6 +229,31 @@ export function useHardDeleteWorkspace() {
   })
 }
 
+export function useAdminDeleteProject() {
+  const invalidate = useAdminInvalidate()
+
+  return useMutation({
+    mutationFn: async ({
+      workspaceId,
+      projectId,
+    }: {
+      workspaceId: string
+      projectId: string
+    }): Promise<{ warning: string | null }> => {
+      const response = await fetch(
+        `/api/admin/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}`,
+        { method: 'DELETE' }
+      )
+      const payload = (await response.json()) as { error?: string; warning?: string | null }
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to delete project')
+      }
+      return { warning: payload.warning ?? null }
+    },
+    onSuccess: invalidate,
+  })
+}
+
 /* -------------------------------------------------------------------------- */
 /* Owners                                                                     */
 /* -------------------------------------------------------------------------- */

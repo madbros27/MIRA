@@ -63,6 +63,7 @@ export default function TeamPage() {
             workspaceId={workspaceId}
             caps={caps}
             currentUserId={userId}
+            isOwner={isOwner}
           />
         </TabsContent>
 
@@ -86,6 +87,7 @@ export default function TeamPage() {
             <InvitationsPanel
               workspaceId={workspaceId}
               caps={caps}
+              isOwner={isOwner}
               seatsUsed={seatsUsed}
               seatLimit={seatLimit}
             />

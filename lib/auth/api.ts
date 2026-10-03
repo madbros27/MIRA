@@ -26,7 +26,7 @@ export type AdminApiContext = {
   admin: PlatformAdminRow
   /** Acts as the caller. RLS applies. Use for anything a policy already covers. */
   supabase: SupabaseClient<Database>
-  /** Bypasses RLS. Only for auth-user creation and password resets. */
+  /** Bypasses RLS. Only for guarded platform operations requiring privileged APIs. */
   service: SupabaseClient<Database>
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Mail, MailPlus, X } from 'lucide-react'
+import { Copy, Mail, MailPlus, Users, X } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -27,6 +27,8 @@ import { formatRelative } from '@/lib/format'
 import { can, type Grants } from '@/lib/permissions'
 import {
   useInviteMember,
+  useBulkInviteMembers,
+  type BulkInviteResult,
   useInvites,
   usePositions,
   useRevokeInvite,
@@ -36,17 +38,20 @@ import { errorMessage } from '@/lib/utils'
 export function InvitationsPanel({
   workspaceId,
   caps,
+  isOwner,
   seatsUsed,
   seatLimit,
 }: {
   workspaceId: string
   caps: Grants
+  isOwner: boolean
   seatsUsed: number
   seatLimit: number
 }) {
   const { data: invites, isLoading } = useInvites(workspaceId)
   const revoke = useRevokeInvite(workspaceId)
   const [inviteOpen, setInviteOpen] = React.useState(false)
+  const [bulkInviteOpen, setBulkInviteOpen] = React.useState(false)
 
   const mayInvite = can.inviteMembers(caps)
   const pending = (invites ?? []).filter((invite) => invite.status === 'pending')
@@ -70,10 +75,22 @@ export function InvitationsPanel({
           )}
         </p>
         {mayInvite ? (
-          <Button variant="primary" onClick={() => setInviteOpen(true)} disabled={seatsLeft <= 0}>
-            <MailPlus aria-hidden />
-            Invite someone
-          </Button>
+          <div className="flex gap-2">
+            {isOwner ? (
+              <Button
+                variant="secondary"
+                onClick={() => setBulkInviteOpen(true)}
+                disabled={seatsLeft <= 0}
+              >
+                <Users aria-hidden />
+                Add Members
+              </Button>
+            ) : null}
+            <Button variant="primary" onClick={() => setInviteOpen(true)} disabled={seatsLeft <= 0}>
+              <MailPlus aria-hidden />
+              Invite someone
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -182,7 +199,251 @@ export function InvitationsPanel({
         open={inviteOpen}
         onOpenChange={setInviteOpen}
       />
+      {isOwner ? (
+        <BulkInviteDialog
+          workspaceId={workspaceId}
+          open={bulkInviteOpen}
+          onOpenChange={setBulkInviteOpen}
+        />
+      ) : null}
     </div>
+  )
+}
+
+type ParsedRecipient = {
+  email: string
+  status: 'ready' | 'invalid' | 'duplicate'
+}
+
+function parseRecipients(input: string): ParsedRecipient[] {
+  const seen = new Set<string>()
+  return input
+    .split(/[\r\n,;]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .map((email) => {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { email, status: 'invalid' as const }
+      }
+      if (seen.has(email)) return { email, status: 'duplicate' as const }
+      seen.add(email)
+      return { email, status: 'ready' as const }
+    })
+}
+
+const inviteResultLabel: Record<BulkInviteResult['status'], string> = {
+  invited: 'Invited',
+  already_member: 'Already a member',
+  already_invited: 'Invitation pending',
+  invalid: 'Invalid email',
+  duplicate: 'Duplicate',
+  failed: 'Invitation failed',
+}
+
+function BulkInviteDialog({
+  workspaceId,
+  open,
+  onOpenChange,
+}: {
+  workspaceId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const bulkInvite = useBulkInviteMembers(workspaceId)
+  const { data: positions } = usePositions(workspaceId)
+  const [input, setInput] = React.useState('')
+  const [positionId, setPositionId] = React.useState('')
+  const [results, setResults] = React.useState<BulkInviteResult[] | null>(null)
+  const parsed = React.useMemo(() => parseRecipients(input), [input])
+  const ready = parsed.filter((recipient) => recipient.status === 'ready')
+  const invalidCount = parsed.filter((recipient) => recipient.status === 'invalid').length
+  const duplicateCount = parsed.filter((recipient) => recipient.status === 'duplicate').length
+
+  React.useEffect(() => {
+    if (positionId || !positions?.length) return
+    const fallback =
+      positions.find((position) => position.slug === 'member') ?? positions[0]
+    setPositionId(fallback.id)
+  }, [positions, positionId])
+
+  function close(nextOpen: boolean) {
+    onOpenChange(nextOpen)
+    if (!nextOpen) {
+      setInput('')
+      setResults(null)
+      setPositionId('')
+    }
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    try {
+      const sentResults = await bulkInvite.mutateAsync({
+        emails: ready.map((recipient) => recipient.email),
+        positionId,
+      })
+      const byEmail = new Map(sentResults.map((result) => [result.email, result]))
+      const allResults = parsed.map((recipient): BulkInviteResult => {
+        if (recipient.status === 'invalid') {
+          return { email: recipient.email, status: 'invalid' }
+        }
+        if (recipient.status === 'duplicate') {
+          return { email: recipient.email, status: 'duplicate' }
+        }
+        return byEmail.get(recipient.email) ?? {
+          email: recipient.email,
+          status: 'failed',
+          message: 'No result was returned for this invitation',
+        }
+      })
+      setResults(allResults)
+      const invitedCount = allResults.filter((result) => result.status === 'invited').length
+      toast.success('Invitation processing complete', {
+        description: `${invitedCount} invitation${invitedCount === 1 ? '' : 's'} created`,
+      })
+    } catch (caught) {
+      toast.error('Could not process invitations', {
+        description: errorMessage(caught),
+      })
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && bulkInvite.isPending) return
+        close(nextOpen)
+      }}
+    >
+      <DialogContent>
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle>Add Members</DialogTitle>
+            <DialogDescription>
+              Enter one email per line, or separate addresses with commas or semicolons.
+              Each invitation uses the selected position.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            {!results ? (
+              <>
+                <Field label="Email addresses" htmlFor="bulk-invite-emails" required>
+                  <textarea
+                    id="bulk-invite-emails"
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    placeholder={'member1@example.com\nmember2@example.com'}
+                    rows={5}
+                    className="w-full resize-y rounded-lg border border-input bg-surface px-3 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </Field>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="success">{ready.length} valid recipients</Badge>
+                  <Badge variant={invalidCount ? 'danger' : 'neutral'}>
+                    {invalidCount} invalid
+                  </Badge>
+                  <Badge variant={duplicateCount ? 'warning' : 'neutral'}>
+                    {duplicateCount} duplicates
+                  </Badge>
+                </div>
+                {parsed.length ? (
+                  <div
+                    className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2"
+                    aria-label="Review recipients"
+                  >
+                    {parsed.map((recipient, index) => (
+                      <div
+                        key={`${recipient.email}-${index}`}
+                        className="flex items-center justify-between gap-3 px-1 py-1 text-sm"
+                      >
+                        <span className="min-w-0 truncate">{recipient.email}</span>
+                        <Badge
+                          variant={
+                            recipient.status === 'ready'
+                              ? 'success'
+                              : recipient.status === 'invalid'
+                                ? 'danger'
+                                : 'warning'
+                          }
+                        >
+                          {recipient.status === 'ready'
+                            ? 'Ready'
+                            : recipient.status === 'invalid'
+                              ? 'Invalid email'
+                              : 'Duplicate'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <Field label="Position" htmlFor="bulk-invite-position" required>
+                  <Select value={positionId} onValueChange={setPositionId}>
+                    <SelectTrigger id="bulk-invite-position">
+                      <SelectValue placeholder="Choose a position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(positions ?? []).map((position) => (
+                        <SelectItem key={position.id} value={position.id}>
+                          {position.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </>
+            ) : (
+              <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                {results.map((result, index) => (
+                  <div
+                    key={`${result.email}-${index}`}
+                    className="flex items-start justify-between gap-3 px-1 py-1.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate">{result.email}</p>
+                      {result.message ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">{result.message}</p>
+                      ) : null}
+                    </div>
+                    <Badge
+                      variant={
+                        result.status === 'invited' || result.status === 'already_member'
+                          ? 'success'
+                          : result.status === 'failed' || result.status === 'invalid'
+                            ? 'danger'
+                            : 'warning'
+                      }
+                    >
+                      {inviteResultLabel[result.status]}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => close(false)}
+              disabled={bulkInvite.isPending}
+            >
+              {results ? 'Done' : 'Cancel'}
+            </Button>
+            {results ? null : (
+              <Button
+                type="submit"
+                variant="primary"
+                loading={bulkInvite.isPending}
+                disabled={!ready.length || !positionId}
+              >
+                Invite {ready.length || ''} member{ready.length === 1 ? '' : 's'}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

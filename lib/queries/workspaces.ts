@@ -457,6 +457,27 @@ export function useRemoveMember(workspaceId: string) {
   })
 }
 
+/** Delete a member's workspace access without touching their global account. */
+export function useOwnerDeleteMember(workspaceId: string) {
+  const supabase = useSupabase()
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const result = await supabase.rpc('owner_remove_workspace_member', {
+        p_workspace: workspaceId,
+        p_member: userId,
+      })
+      if (result.error) throw result.error
+      return userId
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: qk.members(workspaceId) })
+      client.invalidateQueries({ queryKey: qk.workspaces })
+    },
+  })
+}
+
 /* -------------------------------------------------------------------------- */
 /* Invites                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -508,6 +529,44 @@ export function useInviteMember(workspaceId: string) {
         throw new Error(payload.error ?? 'Could not send the invitation')
       }
       return payload
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: qk.invites(workspaceId) })
+      client.invalidateQueries({ queryKey: qk.members(workspaceId) })
+    },
+  })
+}
+
+export type BulkInviteResult = {
+  email: string
+  status:
+    | 'invited'
+    | 'already_member'
+    | 'already_invited'
+    | 'invalid'
+    | 'duplicate'
+    | 'failed'
+  message?: string
+}
+
+export function useBulkInviteMembers(workspaceId: string) {
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { emails: string[]; positionId: string }) => {
+      const response = await fetch('/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, ...input }),
+      })
+      const payload = (await response.json()) as {
+        error?: string
+        results?: BulkInviteResult[]
+      }
+      if (!response.ok || !payload.results) {
+        throw new Error(payload.error ?? 'Could not send invitations')
+      }
+      return payload.results
     },
     onSuccess: () => {
       client.invalidateQueries({ queryKey: qk.invites(workspaceId) })

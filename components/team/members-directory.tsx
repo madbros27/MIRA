@@ -28,6 +28,7 @@ import { can, type Grants } from '@/lib/permissions'
 import {
   useAssignPosition,
   useMembers,
+  useOwnerDeleteMember,
   usePositions,
   useRemoveMember,
   useSetMemberStatus,
@@ -50,10 +51,12 @@ export function MembersDirectory({
   workspaceId,
   caps,
   currentUserId,
+  isOwner,
 }: {
   workspaceId: string
   caps: Grants
   currentUserId: string
+  isOwner: boolean
 }) {
   const { data: members, isLoading } = useMembers(workspaceId)
   const { data: positions } = usePositions(workspaceId)
@@ -62,6 +65,7 @@ export function MembersDirectory({
   const setReportsTo = useSetReportsTo(workspaceId)
   const setStatus = useSetMemberStatus(workspaceId)
   const removeMember = useRemoveMember(workspaceId)
+  const deleteMember = useOwnerDeleteMember(workspaceId)
 
   const [search, setSearch] = React.useState('')
   const [positionFilter, setPositionFilter] = React.useState('all')
@@ -229,7 +233,7 @@ export function MembersDirectory({
                     </Badge>
                   )}
 
-                  {(canEditThisMember || mayRemove) && !isSelf ? (
+                  {(canEditThisMember || (mayRemove && !member.is_owner)) && !isSelf ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -306,7 +310,7 @@ export function MembersDirectory({
                               }}
                             >
                               <UserMinus className="size-4" aria-hidden />
-                              Remove from workspace
+                              {isOwner ? 'Delete member' : 'Remove from workspace'}
                             </DropdownMenuItem>
                           </>
                         ) : null}
@@ -331,24 +335,48 @@ export function MembersDirectory({
       <ConfirmDialog
         open={Boolean(removing)}
         onOpenChange={(open) => !open && setRemoving(null)}
-        title={`Remove ${displayName(removing?.profile)}?`}
+        title={isOwner ? 'Delete member?' : `Remove ${displayName(removing?.profile)}?`}
         description={
-          <>
-            They lose access to this workspace immediately and their seat is
-            freed. Issues they created and comments they wrote stay exactly
-            where they are
-            {removing?.joined_at ? ` (joined ${formatDate(removing.joined_at)})` : ''}.
-          </>
+          isOwner ? (
+            `This will remove ${
+              removing
+                ? `${displayName(removing.profile)}${
+                    removing.profile?.email ? ` (${removing.profile.email})` : ''
+                  }`
+                : 'this member'
+            } from this workspace. This action cannot be undone.`
+          ) : (
+            <>
+              They lose access to this workspace immediately and their seat is
+              freed. Issues they created and comments they wrote stay exactly
+              where they are
+              {removing?.joined_at ? ` (joined ${formatDate(removing.joined_at)})` : ''}.
+            </>
+          )
         }
-        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        confirmLabel={isOwner ? 'Delete Member' : 'Remove'}
         destructive
+        loading={deleteMember.isPending || removeMember.isPending}
         onConfirm={async () => {
           if (!removing) return
-          await run(
-            () => removeMember.mutateAsync(removing.user_id),
-            `${displayName(removing.profile)} removed`
-          )
-          setRemoving(null)
+          if (isOwner) {
+            try {
+              await deleteMember.mutateAsync(removing.user_id)
+              toast.success(`${displayName(removing.profile)} deleted from this workspace`)
+              setRemoving(null)
+            } catch (caught) {
+              toast.error('Could not delete member', {
+                description: errorMessage(caught),
+              })
+            }
+          } else {
+            await run(
+              () => removeMember.mutateAsync(removing.user_id),
+              `${displayName(removing.profile)} removed`
+            )
+            setRemoving(null)
+          }
         }}
       />
     </div>
