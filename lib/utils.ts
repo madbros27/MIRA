@@ -151,6 +151,9 @@ function friendlyDbError(message: string): string {
   if (/duplicate key value.*workspace_invites_pending_unique/i.test(message)) {
     return 'There is already a pending invitation for that email address.'
   }
+  if (/duplicate key value.*positions_workspace_name_key/i.test(message)) {
+    return 'A position with that name already exists in this workspace.'
+  }
   if (/duplicate key value/i.test(message)) return 'That value is already taken.'
   if (/not allowed by this project workflow/i.test(message)) {
     return 'That transition is not allowed by this project workflow.'
