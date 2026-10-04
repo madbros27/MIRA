@@ -46,6 +46,7 @@ and assigning work.
 - [Data model](#data-model)
 - [Verifying tenant isolation yourself](#verifying-tenant-isolation-yourself)
 - [Building for production](#building-for-production)
+- [Database Management Scripts](#database-management-scripts)
 - [Deployment](#deployment)
 - [Design system](#design-system)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -645,52 +646,142 @@ npm start           # serve the build
 
 ---
 
+## Database Management Scripts
+
+MIRA includes two self-contained, idempotent SQL scripts located in the `database/` directory. These scripts are engineered for maximum portability across **PostgreSQL 14+**, **Docker / self-hosted PostgreSQL**, and **Supabase (Cloud or Local)**.
+
+> **Auto-Deployment Safety:**
+> The `database/` directory is isolated from the `supabase/migrations/` automated migration runner and Next.js application bundles. Checking in these SQL files will **not** trigger any unintended migrations or break your running auto-deployments (e.g., on Vercel or Supabase).
+
+| Script | Purpose | How to Run |
+| --- | --- | --- |
+| `database/setup_all_tables_and_admin.sql` | **Full Bootstrap:** Creates all extensions, types, 27 core tables, `mchat_messages`, triggers, RLS policies, system capabilities, and provisions the default System Administrator. | `psql "$DATABASE_URL" -f database/setup_all_tables_and_admin.sql` or paste into Supabase SQL Editor. |
+| `database/clear_all_data.sql` | **Data Purge:** Safely truncates/clears all rows across all application tables and `auth.users` with `CASCADE` & `RESTART IDENTITY`, while preserving the schema and re-seeding the 22 core capabilities. | `psql "$DATABASE_URL" -f database/clear_all_data.sql` or paste into Supabase SQL Editor. |
+
+### Default System Administrator Credentials
+When initialized using `database/setup_all_tables_and_admin.sql`, the following administrator account is ready for immediate login:
+
+- **Portal URL:** `https://<your-domain>/miraadmin/login` (or `http://localhost:3000/miraadmin/login`)
+- **Username / Email:** `madbrostech27@gmail.com`
+- **Password:** `admin@1234567`
+- **Role:** Platform System Administrator (`platform_admins`)
+
+---
+
 ## Deployment
 
-### Frontend on Vercel
+### Step-by-Step: Deploying on Vercel (Frontend & Serverless API)
 
-1. Push to GitHub and import the repository at
-   [vercel.com/new](https://vercel.com/new). Next.js is detected
-   automatically.
-2. Add the environment variables under **Settings → Environment Variables**:
+#### 1. Push Code to GitHub
+Ensure all your changes are committed and pushed to your GitHub repository:
+```bash
+git add .
+git commit -m "Add database scripts and deployment instructions"
+git push origin <your-branch>
+```
 
-   | Variable | Environments | Notes |
-   | --- | --- | --- |
-   | `NEXT_PUBLIC_SUPABASE_URL` | all | |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | all | |
-   | `SUPABASE_SERVICE_ROLE_KEY` | all | **Secret.** Never `NEXT_PUBLIC_`. |
-   | `NEXT_PUBLIC_APP_URL` | production | Your real domain. Leave unset on previews and `VERCEL_URL` is used. |
-   | `ALLOW_PUBLIC_SIGNUP` | all | `false` unless you want open registration |
-   | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | — | Only needed where you run the seed script |
+#### 2. Import Project on Vercel
+1. Go to [vercel.com/new](https://vercel.com/new).
+2. Connect your GitHub account and import your repository.
+3. Vercel automatically detects **Next.js** as the framework preset. Leave the Root Directory as `./`.
 
-3. Add your custom domain under **Settings → Domains**.
+#### 3. Configure Environment Variables
+Under **Settings → Environment Variables** on Vercel, configure the following:
 
-**How `<base>/miraadmin/login` resolves.** It is an ordinary App Router route
-in the `(admin)` route group, so no rewrite, no subdomain and no extra DNS is
-involved. Point your domain at the Vercel project and both portals are served
-from it: `https://your-domain.example/login` and
-`https://your-domain.example/miraadmin/login`. Because the admin portal is a
-path rather than a host, `middleware.ts` is what keeps the two apart — which is
-why it runs on every document request.
+| Variable | Environment | Description |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Production, Preview, Dev | The HTTPS endpoint of your Supabase / PostgREST instance (e.g. `https://xyzcompany.supabase.co`). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production, Preview, Dev | The public `anon` API key for client-side queries (RLS enforced). |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production, Preview, Dev | **Secret.** The `service_role` key used for administrative actions and seeding. |
+| `NEXT_PUBLIC_APP_URL` | Production | Your public production URL (e.g. `https://mira.yourdomain.com`). On previews, Vercel automatically falls back to `VERCEL_URL`. |
+| `ALLOW_PUBLIC_SIGNUP` | Production, Preview, Dev | Set to `false` for enterprise 3-tier access control (only invited members and provisioned owners may sign up). |
 
-If you would rather the admin portal were not publicly discoverable, put it
-behind Vercel's IP allowlist or change `ADMIN_PREFIX` in
-`lib/auth/constants.ts` to a path only you know. That is obscurity, not
-security; the real protection is the three-layer check.
+#### 4. Deploy
+Click **Deploy**. Vercel will run `npm run build` and launch the application.
 
-### Backend on Supabase Cloud
+#### 5. Custom Domain & Auth Redirects
+1. Go to **Project Settings → Domains** and add your custom domain (e.g. `mira.yourcompany.com`).
+2. Update your database / Supabase Auth redirect URLs to match your domain (see below).
 
-1. Apply the migrations against the production project
-   (`supabase link` then `npm run db:push`).
-2. Set **Site URL** and **Redirect URLs** to your production domain.
-3. Configure SMTP under **Authentication → Email** so invitations and password
-   resets actually send. Without it MIRA still works — the UI hands you the
-   links to distribute.
-4. Run `npm run seed:admin` once, with a real `SEED_ADMIN_PASSWORD`.
-5. Sign in at `https://your-domain.example/miraadmin/login` and change the
-   password when prompted.
-6. Turn on **Point-in-Time Recovery** and set up backups before you have
-   customers.
+---
+
+### Step-by-Step: Setting Up the Database (PostgreSQL / Supabase)
+
+#### Option A: Supabase Cloud (Managed PostgreSQL)
+1. **Create Project:** Sign in to [supabase.com](https://supabase.com) and create a new project.
+2. **Execute Full Setup SQL:**
+   - Open the **SQL Editor** from the left navigation.
+   - Click **New Query**.
+   - Copy the entire contents of `database/setup_all_tables_and_admin.sql` and paste them into the editor.
+   - Click **Run**.
+   - All tables, constraints, triggers, RLS policies, capabilities, and the default admin (`madbrostech27@gmail.com`) are immediately created.
+3. **Retrieve API Credentials:**
+   - Go to **Project Settings → API**.
+   - Copy the **Project URL**, the **anon public key**, and the **service_role secret key**.
+   - Paste these into your Vercel Environment Variables or `.env.local`.
+4. **Configure Redirect URLs:**
+   - Go to **Authentication → URL Configuration**.
+   - Set **Site URL** to `https://<your-domain>` (or `http://localhost:3000`).
+   - Add `https://<your-domain>/**` to **Redirect URLs**.
+
+#### Option B: Self-Hosted PostgreSQL / Docker / VPS Setup
+If you are integrating MIRA with your own PostgreSQL server (AWS RDS, Neon, Docker, or bare metal):
+
+1. **Connect to PostgreSQL:**
+   Ensure you have a PostgreSQL 14+ instance running:
+   ```bash
+   psql -h <host> -U <user> -d <database_name>
+   ```
+
+2. **Execute the Setup Script:**
+   Run the standalone setup script using `psql`:
+   ```bash
+   psql "$DATABASE_URL" -f database/setup_all_tables_and_admin.sql
+   ```
+   *The script automatically provisions `uuid-ossp`, `pgcrypto`, the `auth` compatibility layer, all 27 application tables, and the default admin.*
+
+3. **Running the Supabase / PostgREST Stack on Docker (Optional):**
+   MIRA's client interfaces with PostgreSQL through standard PostgREST and Supabase Auth REST endpoints. You can run the official Supabase Docker Compose stack on your server:
+   ```bash
+   git clone --depth 1 https://github.com/supabase/supabase
+   cd supabase/docker
+   cp .env.example .env
+   docker compose up -d
+   ```
+   Set `NEXT_PUBLIC_SUPABASE_URL` to `http://<your-server-ip>:8000` (or behind an Nginx reverse proxy).
+
+4. **Clearing All Data (When Needed):**
+   To reset all records and start fresh without dropping the schema:
+   ```bash
+   psql "$DATABASE_URL" -f database/clear_all_data.sql
+   ```
+
+---
+
+### Step-by-Step: Onboarding Your First Workspace
+
+Once deployed, follow this workflow to start using MIRA:
+
+1. **Sign into the System Administrator Portal:**
+   - Go to `https://<your-domain>/miraadmin/login`.
+   - Enter:
+     - **Email:** `madbrostech27@gmail.com`
+     - **Password:** `admin@1234567`
+   - You are now in the platform management dashboard.
+
+2. **Create a Client Workspace:**
+   - Navigate to **Workspaces** (`/miraadmin/workspaces`).
+   - Click **Create Workspace**.
+   - Fill in Company Name, Slug, Plan, and Seat / Project limits.
+
+3. **Assign an Owner:**
+   - Navigate to **Owners** (`/miraadmin/owners`).
+   - Click **Create Owner**.
+   - Enter the client's email, name, and temporary password, and associate them with the workspace.
+
+4. **Client Signs In:**
+   - The owner logs in at the main portal: `https://<your-domain>/login`.
+   - The owner can create projects, invite team members under **Team**, customize positions and permissions, and collaborate via **MChat**.
 
 ---
 
