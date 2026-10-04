@@ -34,6 +34,7 @@ import { Kbd } from '@/components/ui/primitives'
 import { can } from '@/lib/permissions'
 import { useProjects } from '@/lib/queries/projects'
 import { useGlobalSearch } from '@/lib/queries/search'
+import { useTeamAccessConfig } from '@/lib/queries/team-access'
 import { useUiStore } from '@/lib/store/ui-store'
 import { cn, debounce, truncate } from '@/lib/utils'
 
@@ -45,8 +46,9 @@ export function CommandPalette() {
   const setCreateProjectOpen = useUiStore((state) => state.setCreateProjectOpen)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
 
-  const { workspaceId, caps, isOwner } = useWorkspaceContext()
+  const { workspaceId, caps, userId, isOwner } = useWorkspaceContext()
   const { data: projects } = useProjects(workspaceId)
+  const { data: accessConfig } = useTeamAccessConfig(workspaceId)
 
   const [input, setInput] = React.useState('')
   const [term, setTerm] = React.useState('')
@@ -221,7 +223,12 @@ export function CommandPalette() {
                   <Item value="search issues advanced" icon={Search} onSelect={() => run(() => router.push('/search'))}>
                     Advanced search
                   </Item>
-                  <Item value={`team members positions invites ${isOwner ? 'directory' : ''}`} icon={Users} shortcut="g t" onSelect={() => run(() => router.push('/team'))}>
+                  <Item
+                    value={`team members ${isOwner || accessConfig?.positionsMemberIds?.includes(userId) ? 'positions' : ''} ${isOwner || accessConfig?.directoryMemberIds?.includes(userId) ? 'directory' : ''} invites`}
+                    icon={Users}
+                    shortcut="g t"
+                    onSelect={() => run(() => router.push('/team'))}
+                  >
                     Team &amp; positions
                   </Item>
                   {can.viewReports(caps) ? (
