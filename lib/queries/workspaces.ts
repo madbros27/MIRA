@@ -250,6 +250,43 @@ export function useSetReportsTo(workspaceId: string) {
   })
 }
 
+/** Set or clear the reporting line for multiple workspace members at once. */
+export function useSetReportsToBulk(workspaceId: string) {
+  const supabase = useSupabase()
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      userIds,
+      reportsTo,
+    }: {
+      userIds: string[]
+      reportsTo: string | null
+    }) => {
+      const uniqueUserIds = [...new Set(userIds)]
+      if (!uniqueUserIds.length) {
+        throw new Error('Select at least one team member')
+      }
+      if (reportsTo && uniqueUserIds.includes(reportsTo)) {
+        throw new Error('A selected member cannot report to another selected member')
+      }
+
+      const result = await supabase
+        .from('workspace_members')
+        .update({ reports_to_user_id: reportsTo })
+        .eq('workspace_id', workspaceId)
+        .in('user_id', uniqueUserIds)
+        .select(MEMBER_SELECT)
+      const updatedMembers = unwrap(result) as unknown as Member[]
+      if (updatedMembers.length !== uniqueUserIds.length) {
+        throw new Error('One or more selected members could not be updated')
+      }
+      return updatedMembers
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: qk.members(workspaceId) }),
+  })
+}
+
 /** Suspend or restore a seat without removing the person from the workspace. */
 export function useSetMemberStatus(workspaceId: string) {
   const supabase = useSupabase()
