@@ -170,6 +170,7 @@ export function PositionsEditor({
       <CreatePositionDialog
         workspaceId={workspaceId}
         existingNames={existingNames}
+        positions={positions ?? []}
         open={createOpen}
         onOpenChange={setCreateOpen}
         caps={caps}
@@ -458,6 +459,7 @@ function PositionCard({
 function CreatePositionDialog({
   workspaceId,
   existingNames = [],
+  positions = [],
   open,
   onOpenChange,
   caps,
@@ -465,6 +467,7 @@ function CreatePositionDialog({
 }: {
   workspaceId: string
   existingNames?: string[]
+  positions?: Position[]
   open: boolean
   onOpenChange: (open: boolean) => void
   caps?: Grants
@@ -474,14 +477,30 @@ function CreatePositionDialog({
 
   const [name, setName] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [template, setTemplate] = React.useState<DefaultPositionSlug>('member')
+  const [startFrom, setStartFrom] = React.useState<string>('tpl:member')
   const [selected, setSelected] = React.useState<Set<Capability>>(
     () => new Set(DEFAULT_POSITION_CAPABILITIES.member)
   )
 
-  function applyTemplate(slug: DefaultPositionSlug) {
-    setTemplate(slug)
-    setSelected(new Set(DEFAULT_POSITION_CAPABILITIES[slug]))
+  function handleStartFromChange(value: string) {
+    setStartFrom(value)
+    if (value.startsWith('pos:')) {
+      const posId = value.slice(4)
+      const target = positions.find((p) => p.id === posId)
+      if (target) {
+        setSelected(new Set(target.capabilities))
+        if (!description && target.description) {
+          setDescription(target.description)
+        }
+      }
+    } else if (value.startsWith('tpl:')) {
+      const slug = value.slice(4) as DefaultPositionSlug
+      if (slug in DEFAULT_POSITION_CAPABILITIES) {
+        setSelected(new Set(DEFAULT_POSITION_CAPABILITIES[slug]))
+      }
+    } else if (value === 'blank') {
+      setSelected(new Set())
+    }
   }
 
   const trimmedName = name.trim()
@@ -497,12 +516,14 @@ function CreatePositionDialog({
         if (!next) {
           setName('')
           setDescription('')
-          applyTemplate('member')
+          setStartFrom('tpl:member')
+          setSelected(new Set(DEFAULT_POSITION_CAPABILITIES.member))
         }
       }}
     >
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex flex-col sm:max-w-2xl max-h-[88vh] overflow-hidden p-0">
         <form
+          className="flex flex-col min-h-0 flex-1 overflow-hidden"
           onSubmit={async (event) => {
             event.preventDefault()
             if (!trimmedName || isDuplicateName) return
@@ -521,15 +542,14 @@ function CreatePositionDialog({
             }
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 px-5 py-4 border-b border-border">
             <DialogTitle>New position</DialogTitle>
             <DialogDescription>
-              Start from a template, then tick exactly what this role should be
-              able to do.
+              Start from an existing workspace position to duplicate capabilities, or pick a standard template.
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-4 min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="Name"
@@ -551,22 +571,38 @@ function CreatePositionDialog({
                   maxLength={60}
                 />
               </Field>
-              <Field label="Start from" htmlFor="position-template">
+              <Field
+                label="Start from"
+                htmlFor="position-template"
+                hint="Duplicate from an existing position or template"
+              >
                 <select
                   id="position-template"
-                  value={template}
-                  onChange={(event) =>
-                    applyTemplate(event.target.value as DefaultPositionSlug)
-                  }
-                  className="h-9 w-full rounded-lg border border-input bg-surface px-3 text-sm shadow-xs"
+                  value={startFrom}
+                  onChange={(event) => handleStartFromChange(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-input bg-surface px-3 text-sm shadow-xs text-foreground focus-visible:border-primary focus-visible:outline-none"
                 >
-                  {(Object.keys(DEFAULT_POSITION_CAPABILITIES) as DefaultPositionSlug[]).map(
-                    (slug) => (
-                      <option key={slug} value={slug}>
-                        {slug.replace('_', ' ')}
-                      </option>
-                    )
+                  {positions.length > 0 && (
+                    <optgroup label="Available Workspace Positions (Duplicate)">
+                      {positions.map((p) => (
+                        <option key={`pos:${p.id}`} value={`pos:${p.id}`}>
+                          {p.name} ({p.capabilities.length} capabilities)
+                        </option>
+                      ))}
+                    </optgroup>
                   )}
+                  <optgroup label="Default Templates">
+                    {(Object.keys(DEFAULT_POSITION_CAPABILITIES) as DefaultPositionSlug[]).map(
+                      (slug) => (
+                        <option key={`tpl:${slug}`} value={`tpl:${slug}`}>
+                          {slug.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())} template
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                  <optgroup label="Custom">
+                    <option value="blank">Blank (no capabilities)</option>
+                  </optgroup>
                 </select>
               </Field>
             </div>
@@ -626,7 +662,7 @@ function CreatePositionDialog({
             </div>
           </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border px-5 py-3 bg-surface">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -686,8 +722,9 @@ function EditPositionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flex flex-col sm:max-w-md max-h-[88vh] overflow-hidden p-0">
         <form
+          className="flex flex-col min-h-0 flex-1 overflow-hidden"
           onSubmit={async (event) => {
             event.preventDefault()
             if (!trimmedName || isDuplicateName) return
@@ -706,14 +743,14 @@ function EditPositionDialog({
             }
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 px-5 py-4 border-b border-border">
             <DialogTitle>Edit position</DialogTitle>
             <DialogDescription>
               Update the name and description for this position.
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-4 min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <Field
               label="Name"
               htmlFor="edit-position-name"
@@ -747,7 +784,7 @@ function EditPositionDialog({
             </Field>
           </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border px-5 py-3 bg-surface">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -805,8 +842,9 @@ function DuplicatePositionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex flex-col sm:max-w-2xl max-h-[88vh] overflow-hidden p-0">
         <form
+          className="flex flex-col min-h-0 flex-1 overflow-hidden"
           onSubmit={async (event) => {
             event.preventDefault()
             if (!trimmedName || isDuplicateName) return
@@ -825,14 +863,14 @@ function DuplicatePositionDialog({
             }
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 px-5 py-4 border-b border-border">
             <DialogTitle>Duplicate position</DialogTitle>
             <DialogDescription>
               Create a new position with the capabilities copied from “{position.name}”.
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-4 min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="New position name"
@@ -921,7 +959,7 @@ function DuplicatePositionDialog({
             </div>
           </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border px-5 py-3 bg-surface">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

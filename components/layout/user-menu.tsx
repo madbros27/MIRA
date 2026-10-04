@@ -1,6 +1,6 @@
 'use client'
 
-import { KeyRound, Keyboard, LogOut, Settings, User, Users } from 'lucide-react'
+import { KeyRound, Keyboard, LogOut, Network, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
@@ -16,14 +16,13 @@ import {
 import { Avatar } from '@/components/ui/primitives'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { ROLE_META } from '@/lib/constants'
-import { can } from '@/lib/permissions'
 import { useUiStore } from '@/lib/store/ui-store'
 import { cn, displayName } from '@/lib/utils'
 import { broadcastSessionMessage } from '@/lib/auth/session-bus'
 
 export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain' }) {
   const router = useRouter()
-  const { profile, userId, caps, workspace } = useWorkspaceContext()
+  const { profile, userId, workspace } = useWorkspaceContext()
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen)
   const [signingOut, setSigningOut] = React.useState(false)
 
@@ -81,19 +80,13 @@ export function UserMenu({ variant = 'sidebar' }: { variant?: 'sidebar' | 'plain
           <User />
           Your profile
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push('/team?tab=org')}>
+          <Network />
+          Org chart
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => router.push('/change-password')}>
           <KeyRound />
           Change password
-        </DropdownMenuItem>
-        {can.manageWorkspace(caps) ? (
-          <DropdownMenuItem onSelect={() => router.push('/settings/workspace')}>
-            <Settings />
-            Workspace settings
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onSelect={() => router.push('/team')}>
-          <Users />
-          Team &amp; positions
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}>
           <Keyboard />
