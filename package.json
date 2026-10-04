@@ -12,6 +12,7 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:schema": "node scripts/build-schema.mjs",
+    "db:bundle": "node scripts/build-schema.mjs && node scripts/build-standalone-sql.mjs",
     "db:types": "supabase gen types typescript --linked > lib/types/database.ts",
     "db:test": "supabase db reset && psql \"$DATABASE_URL\" -f supabase/tests/tenant-isolation.sql",
     "seed:admin": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed-admin.ts",
