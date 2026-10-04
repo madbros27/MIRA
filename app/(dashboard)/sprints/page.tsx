@@ -1,10 +1,12 @@
 'use client'
 
-import { CalendarRange, ChevronRight, Timer } from 'lucide-react'
+import { CalendarRange, ChevronRight, Plus, Timer } from 'lucide-react'
 import Link from 'next/link'
 import * as React from 'react'
 
+import { GlobalCreateSprintDialog } from '@/components/sprints/global-create-sprint-dialog'
 import { useWorkspaceContext } from '@/components/providers/workspace-provider'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/controls'
 import {
   Badge,
@@ -39,6 +41,7 @@ type SprintWithStats = SprintRow & {
 export default function SprintsPage() {
   const { workspaceId } = useWorkspaceContext()
   const { data: projects, isLoading: projectsLoading } = useProjects(workspaceId)
+  const [createOpen, setCreateOpen] = React.useState(false)
   const supabase = useSupabase()
 
   const projectIds = React.useMemo(
@@ -106,11 +109,23 @@ export default function SprintsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Sprints</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every sprint in the projects you belong to.
-        </p>
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Sprints</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every sprint in the projects you belong to.
+          </p>
+        </div>
+        {projects?.length ? (
+          <Button
+            variant="primary"
+            onClick={() => setCreateOpen(true)}
+            className="shrink-0 gap-1.5"
+          >
+            <Plus className="size-4" aria-hidden />
+            Create sprint
+          </Button>
+        ) : null}
       </header>
 
       {busy ? (
@@ -129,7 +144,19 @@ export default function SprintsPage() {
         <EmptyState
           icon={<CalendarRange />}
           title="No sprints yet"
-          description="Open a project's backlog to plan the first one."
+          description="Create your first sprint to start planning and tracking work."
+          action={
+            projects?.length ? (
+              <Button
+                variant="primary"
+                onClick={() => setCreateOpen(true)}
+                className="gap-1.5"
+              >
+                <Plus className="size-4" aria-hidden />
+                Create sprint
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <Tabs defaultValue={groups.active.length ? 'active' : 'planned'}>
@@ -149,8 +176,21 @@ export default function SprintsPage() {
                     status === 'active'
                       ? 'Start a planned sprint from a project backlog.'
                       : status === 'planned'
-                        ? 'Plan one from a project backlog.'
+                        ? 'Plan one using the Create sprint button.'
                         : 'Completed sprints will collect here.'
+                  }
+                  action={
+                    status === 'planned' && projects?.length ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setCreateOpen(true)}
+                        className="gap-1.5 mt-2"
+                      >
+                        <Plus className="size-3.5" aria-hidden />
+                        New sprint
+                      </Button>
+                    ) : undefined
                   }
                 />
               ) : (
@@ -162,6 +202,15 @@ export default function SprintsPage() {
           ))}
         </Tabs>
       )}
+
+      {projects?.length ? (
+        <GlobalCreateSprintDialog
+          workspaceId={workspaceId}
+          projects={projects}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+        />
+      ) : null}
     </div>
   )
 }
