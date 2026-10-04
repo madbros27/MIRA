@@ -93,6 +93,10 @@ export function MembersDirectory({
     }
   }
 
+  if (!isOwner) {
+    return null
+  }
+
   if (isLoading) {
     return (
       <Card className="divide-y divide-border">

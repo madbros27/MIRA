@@ -16,9 +16,8 @@ import { useMembers } from '@/lib/queries/workspaces'
 /**
  * Team — people, positions and invitations for one workspace.
  *
- * Reachable by anyone in the workspace (a directory is not secret); the
- * controls inside appear according to the viewer's capabilities, and RLS
- * refuses the write regardless if the UI ever gets it wrong.
+ * Directory is restricted to workspace owners; positions, invitations and org
+ * chart appear according to the viewer's capabilities.
  */
 export default function TeamPage() {
   const { workspaceId, workspace, caps, userId, isOwner } = useWorkspaceContext()
@@ -29,6 +28,22 @@ export default function TeamPage() {
 
   const mayManagePositions = can.managePositions(caps)
   const mayInvite = can.inviteMembers(caps)
+
+  const [tab, setTab] = React.useState<string>(isOwner ? 'directory' : 'positions')
+  const userChangedTabRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!userChangedTabRef.current) {
+      setTab(isOwner ? 'directory' : 'positions')
+    } else if (!isOwner && tab === 'directory') {
+      setTab('positions')
+    }
+  }, [isOwner, tab])
+
+  const handleTabChange = (value: string) => {
+    userChangedTabRef.current = true
+    setTab(value)
+  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -50,22 +65,24 @@ export default function TeamPage() {
         </p>
       </header>
 
-      <Tabs defaultValue="directory">
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList className="w-full overflow-x-auto sm:w-auto">
-          <TabsTrigger value="directory">Directory</TabsTrigger>
+          {isOwner ? <TabsTrigger value="directory">Directory</TabsTrigger> : null}
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
           <TabsTrigger value="org">Org chart</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="directory" className="mt-5">
-          <MembersDirectory
-            workspaceId={workspaceId}
-            caps={caps}
-            currentUserId={userId}
-            isOwner={isOwner}
-          />
-        </TabsContent>
+        {isOwner ? (
+          <TabsContent value="directory" className="mt-5">
+            <MembersDirectory
+              workspaceId={workspaceId}
+              caps={caps}
+              currentUserId={userId}
+              isOwner={isOwner}
+            />
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="positions" className="mt-5">
           {mayManagePositions || isOwner ? (

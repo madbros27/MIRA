@@ -45,7 +45,7 @@ export function CommandPalette() {
   const setCreateProjectOpen = useUiStore((state) => state.setCreateProjectOpen)
   const openIssueDialog = useUiStore((state) => state.openIssueDialog)
 
-  const { workspaceId, caps } = useWorkspaceContext()
+  const { workspaceId, caps, isOwner } = useWorkspaceContext()
   const { data: projects } = useProjects(workspaceId)
 
   const [input, setInput] = React.useState('')
@@ -221,7 +221,7 @@ export function CommandPalette() {
                   <Item value="search issues advanced" icon={Search} onSelect={() => run(() => router.push('/search'))}>
                     Advanced search
                   </Item>
-                  <Item value="team members positions invites directory" icon={Users} shortcut="g t" onSelect={() => run(() => router.push('/team'))}>
+                  <Item value={`team members positions invites ${isOwner ? 'directory' : ''}`} icon={Users} shortcut="g t" onSelect={() => run(() => router.push('/team'))}>
                     Team &amp; positions
                   </Item>
                   {can.viewReports(caps) ? (
