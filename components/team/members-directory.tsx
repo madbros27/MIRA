@@ -1,12 +1,13 @@
 'use client'
 
-import { Crown, MoreHorizontal, Search, Shield, UserMinus, Users } from 'lucide-react'
+import { Check, Crown, MoreHorizontal, Search, Shield, UserMinus, Users } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
+  Checkbox,
   Select,
   SelectContent,
   SelectItem,
@@ -34,6 +35,7 @@ import {
   useRemoveMember,
   useSetMemberStatus,
   useSetReportsTo,
+  useSetReportsToBulk,
 } from '@/lib/queries/workspaces'
 import type { Member } from '@/lib/types/app'
 import { displayName, errorMessage } from '@/lib/utils'
@@ -65,6 +67,7 @@ export function MembersDirectory({
 
   const assignPosition = useAssignPosition(workspaceId)
   const setReportsTo = useSetReportsTo(workspaceId)
+  const setReportsToBulk = useSetReportsToBulk(workspaceId)
   const setStatus = useSetMemberStatus(workspaceId)
   const removeMember = useRemoveMember(workspaceId)
   const deleteMember = useOwnerDeleteMember(workspaceId)
@@ -72,6 +75,8 @@ export function MembersDirectory({
   const [search, setSearch] = React.useState('')
   const [positionFilter, setPositionFilter] = React.useState('all')
   const [removing, setRemoving] = React.useState<Member | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = React.useState<Set<string>>(() => new Set())
+  const [bulkReportsTo, setBulkReportsTo] = React.useState('')
 
   const mayAssign = can.assignPositions(caps)
   const mayRemove = can.removeMembers(caps)
@@ -88,6 +93,21 @@ export function MembersDirectory({
     [caps, positions, isOwner]
   )
 
+  const eligibleUserIds = React.useMemo(
+    () =>
+      new Set(
+        (members ?? [])
+          .filter(
+            (member) =>
+              (isOwner && !member.is_owner) ||
+              (!isOwner && mayAssign && subordinates.has(member.user_id))
+          )
+          .map((member) => member.user_id)
+      ),
+    [members, isOwner, mayAssign, subordinates]
+  )
+  const canEditMember = (member: Member) => eligibleUserIds.has(member.user_id)
+
   const filtered = React.useMemo(() => {
     const term = search.trim().toLowerCase()
     return (members ?? []).filter((member) => {
@@ -98,6 +118,31 @@ export function MembersDirectory({
     })
   }, [members, positionFilter, search])
 
+  const eligibleFiltered = filtered.filter(canEditMember)
+  const selectedMembers = (members ?? []).filter(
+    (member) => selectedUserIds.has(member.user_id) && canEditMember(member)
+  )
+  const selectedFilteredCount = eligibleFiltered.filter((member) =>
+    selectedUserIds.has(member.user_id)
+  ).length
+  const commonManagers =
+    selectedMembers.length > 0
+      ? (members ?? []).filter(
+          (candidate) =>
+            selectedMembers.every((member) => candidate.user_id !== member.user_id) &&
+            (isOwner ||
+              candidate.user_id === currentUserId ||
+              subordinates.has(candidate.user_id))
+        )
+      : []
+
+  React.useEffect(() => {
+    setSelectedUserIds((previous) => {
+      const next = new Set([...previous].filter((userId) => eligibleUserIds.has(userId)))
+      return next.size === previous.size ? previous : next
+    })
+  }, [eligibleUserIds])
+
   async function run(action: () => Promise<unknown>, success: string) {
     try {
       await action()
@@ -105,6 +150,50 @@ export function MembersDirectory({
     } catch (caught) {
       toast.error('That did not work', { description: errorMessage(caught) })
     }
+  }
+
+  async function applyBulkReportsTo() {
+    if (!selectedMembers.length || setReportsToBulk.isPending) return
+    if (!bulkReportsTo) {
+      toast.error('Choose a reporting manager or Nobody')
+      return
+    }
+    if (
+      bulkReportsTo !== NO_MANAGER &&
+      !commonManagers.some((candidate) => candidate.user_id === bulkReportsTo)
+    ) {
+      toast.error('Choose a manager who is valid for every selected member')
+      return
+    }
+    try {
+      const reportsTo = bulkReportsTo === NO_MANAGER ? null : bulkReportsTo
+      await setReportsToBulk.mutateAsync({
+        userIds: selectedMembers.map((member) => member.user_id),
+        reportsTo,
+      })
+      toast.success(
+        `Reporting line updated for ${selectedMembers.length} ${
+          selectedMembers.length === 1 ? 'person' : 'people'
+        }`
+      )
+      setSelectedUserIds(new Set())
+      setBulkReportsTo('')
+    } catch (caught) {
+      toast.error('Could not update reporting lines', {
+        description: errorMessage(caught),
+      })
+    }
+  }
+
+  function toggleFilteredSelection(checked: boolean) {
+    setSelectedUserIds((previous) => {
+      const next = new Set(previous)
+      for (const member of eligibleFiltered) {
+        if (checked) next.add(member.user_id)
+        else next.delete(member.user_id)
+      }
+      return next
+    })
   }
 
   if (!isOwner && !canViewDirectory) {
@@ -170,6 +259,75 @@ export function MembersDirectory({
         </Select>
       </div>
 
+      {eligibleFiltered.length ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-3">
+          <Checkbox
+            checked={
+              selectedFilteredCount === eligibleFiltered.length
+                ? true
+                : selectedFilteredCount > 0
+                  ? 'indeterminate'
+                  : false
+            }
+            onCheckedChange={(checked) => toggleFilteredSelection(checked === true)}
+            aria-label="Select all editable filtered team members"
+          />
+          <span className="mr-auto text-xs font-medium tabular-nums">
+            {selectedMembers.length
+              ? `${selectedMembers.length} selected`
+              : 'Select team members'}
+          </span>
+          {selectedMembers.length ? (
+            <>
+              <Select
+                value={
+                  !bulkReportsTo ||
+                  bulkReportsTo === NO_MANAGER ||
+                  commonManagers.some((candidate) => candidate.user_id === bulkReportsTo)
+                    ? bulkReportsTo
+                    : ''
+                }
+                onValueChange={setBulkReportsTo}
+                disabled={setReportsToBulk.isPending}
+              >
+                <SelectTrigger className="w-48" aria-label="Set reports to for selected members">
+                  <SelectValue placeholder="Choose reports to" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MANAGER}>Nobody</SelectItem>
+                  {commonManagers.map((candidate) => (
+                    <SelectItem key={candidate.user_id} value={candidate.user_id}>
+                      {displayName(candidate.profile)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => void applyBulkReportsTo()}
+                disabled={
+                  setReportsToBulk.isPending ||
+                  !bulkReportsTo ||
+                  (bulkReportsTo !== NO_MANAGER &&
+                    !commonManagers.some((candidate) => candidate.user_id === bulkReportsTo))
+                }
+              >
+                <Check aria-hidden />
+                {setReportsToBulk.isPending ? 'Updating…' : 'Apply'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedUserIds(new Set())}
+                disabled={setReportsToBulk.isPending}
+              >
+                Clear
+              </Button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {!filtered.length ? (
         <EmptyState
           icon={<Users />}
@@ -210,6 +368,20 @@ export function MembersDirectory({
                 key={member.user_id}
                 className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"
               >
+                {canEditThisMember ? (
+                  <Checkbox
+                    checked={selectedUserIds.has(member.user_id)}
+                    onCheckedChange={(checked) =>
+                      setSelectedUserIds((previous) => {
+                        const next = new Set(previous)
+                        if (checked === true) next.add(member.user_id)
+                        else next.delete(member.user_id)
+                        return next
+                      })
+                    }
+                    aria-label={`Select ${displayName(member.profile)}`}
+                  />
+                ) : null}
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <Avatar
                     id={member.user_id}
