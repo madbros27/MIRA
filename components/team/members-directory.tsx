@@ -1,6 +1,6 @@
 'use client'
 
-import { Crown, MoreHorizontal, Search, UserMinus, Users } from 'lucide-react'
+import { Crown, MoreHorizontal, Search, Shield, UserMinus, Users } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -25,6 +25,7 @@ import {
 import { Avatar, Badge, Card, EmptyState, Skeleton } from '@/components/ui/primitives'
 import { formatDate } from '@/lib/format'
 import { can, type Grants } from '@/lib/permissions'
+import { getAssignablePositions, getSubordinateUserIds } from '@/lib/permissions/team-access'
 import {
   useAssignPosition,
   useMembers,
@@ -43,20 +44,21 @@ const NO_MANAGER = '__none__'
  * The team directory: who is here, what position they hold, who they report
  * to, and whether their seat is active.
  *
- * Changing a position needs `member.assign_position`; removing somebody needs
- * `member.remove`. Both are re-checked by RLS, so a viewer without them sees
- * a plain read-only list rather than controls that would fail.
+ * Restricted to workspace owners and members granted access by the owner.
+ * Members can ONLY control the positions and permissions of people who report to them.
  */
 export function MembersDirectory({
   workspaceId,
   caps,
   currentUserId,
   isOwner,
+  canViewDirectory = false,
 }: {
   workspaceId: string
   caps: Grants
   currentUserId: string
   isOwner: boolean
+  canViewDirectory?: boolean
 }) {
   const { data: members, isLoading } = useMembers(workspaceId)
   const { data: positions } = usePositions(workspaceId)
@@ -73,6 +75,18 @@ export function MembersDirectory({
 
   const mayAssign = can.assignPositions(caps)
   const mayRemove = can.removeMembers(caps)
+
+  // Subordinates reporting directly or indirectly to current user
+  const subordinates = React.useMemo(
+    () => getSubordinateUserIds(members ?? [], currentUserId),
+    [members, currentUserId]
+  )
+
+  // Positions non-owners are allowed to assign (restricted to caps they hold)
+  const assignablePositions = React.useMemo(
+    () => getAssignablePositions(caps, positions ?? [], isOwner),
+    [caps, positions, isOwner]
+  )
 
   const filtered = React.useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -93,7 +107,7 @@ export function MembersDirectory({
     }
   }
 
-  if (!isOwner) {
+  if (!isOwner && !canViewDirectory) {
     return null
   }
 
@@ -116,6 +130,17 @@ export function MembersDirectory({
 
   return (
     <div className="space-y-4">
+      {!isOwner ? (
+        <div className="flex items-center gap-2.5 rounded-lg border border-primary/20 bg-primary-subtle/30 px-3.5 py-2.5 text-xs text-muted-foreground">
+          <Shield className="size-4 shrink-0 text-primary" aria-hidden />
+          <span>
+            <strong>Reporting hierarchy active:</strong> You can only edit positions, reporting
+            lines, and permissions for people who report directly or indirectly to you. Higher-level
+            positions and managers are read-only.
+          </span>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
           <Search
@@ -159,10 +184,26 @@ export function MembersDirectory({
         <Card className="divide-y divide-border">
           {filtered.map((member) => {
             const isSelf = member.user_id === currentUserId
-            const canEditThisMember = mayAssign && !member.is_owner
+            const isSubordinate = subordinates.has(member.user_id)
+            // Rule: Members cannot change controls of higher-level positions or managers;
+            // they can ONLY control their reporting people (subordinates).
+            const canEditThisMember =
+              (isOwner && !member.is_owner) || (!isOwner && isSubordinate && mayAssign)
+            const canRemoveThisMember =
+              (isOwner && !member.is_owner) || (!isOwner && isSubordinate && mayRemove)
+
             const manager = members?.find(
               (candidate) => candidate.user_id === member.reports_to_user_id
             )
+
+            // When editing reporting line, non-owners can only assign managers within their hierarchy
+            const allowedManagers = (members ?? []).filter((candidate) => {
+              if (candidate.user_id === member.user_id) return false
+              if (isOwner) return true
+              return (
+                candidate.user_id === currentUserId || subordinates.has(candidate.user_id)
+              )
+            })
 
             return (
               <div
@@ -186,6 +227,11 @@ export function MembersDirectory({
                         </Badge>
                       ) : null}
                       {isSelf ? <Badge variant="outline">You</Badge> : null}
+                      {!isOwner && isSubordinate ? (
+                        <Badge variant="neutral" size="sm">
+                          Reports to you
+                        </Badge>
+                      ) : null}
                       {member.status === 'invited' ? (
                         <Badge variant="info">Invited</Badge>
                       ) : member.status === 'suspended' ? (
@@ -224,7 +270,7 @@ export function MembersDirectory({
                         <SelectValue placeholder="No position" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(positions ?? []).map((position) => (
+                        {assignablePositions.map((position) => (
                           <SelectItem key={position.id} value={position.id}>
                             {position.name}
                           </SelectItem>
@@ -233,11 +279,13 @@ export function MembersDirectory({
                     </Select>
                   ) : (
                     <Badge variant="outline" size="md">
-                      {member.is_owner ? 'Full control' : (member.position?.name ?? 'No position')}
+                      {member.is_owner
+                        ? 'Full control'
+                        : (member.position?.name ?? 'No position')}
                     </Badge>
                   )}
 
-                  {(canEditThisMember || (mayRemove && !member.is_owner)) && !isSelf ? (
+                  {(canEditThisMember || canRemoveThisMember) && !isSelf ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -271,13 +319,11 @@ export function MembersDirectory({
                                 className="h-8 w-full rounded-md border border-input bg-surface px-2 text-xs"
                               >
                                 <option value={NO_MANAGER}>Nobody</option>
-                                {(members ?? [])
-                                  .filter((candidate) => candidate.user_id !== member.user_id)
-                                  .map((candidate) => (
-                                    <option key={candidate.user_id} value={candidate.user_id}>
-                                      {displayName(candidate.profile)}
-                                    </option>
-                                  ))}
+                                {allowedManagers.map((candidate) => (
+                                  <option key={candidate.user_id} value={candidate.user_id}>
+                                    {displayName(candidate.profile)}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                             <DropdownMenuSeparator />
@@ -303,7 +349,7 @@ export function MembersDirectory({
                           </>
                         ) : null}
 
-                        {mayRemove && !member.is_owner ? (
+                        {canRemoveThisMember && !member.is_owner ? (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem

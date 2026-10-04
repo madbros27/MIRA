@@ -36,9 +36,11 @@ import {
   type DefaultPositionSlug,
   type Grants,
 } from '@/lib/permissions'
+import { canControlPosition } from '@/lib/permissions/team-access'
 import {
   useCreatePosition,
   useDeletePosition,
+  useMembers,
   usePositions,
   useSetPositionCapabilities,
   useUpdatePosition,
@@ -47,33 +49,43 @@ import type { Position } from '@/lib/types/app'
 import { cn, errorMessage } from '@/lib/utils'
 
 /**
- * The Owner's position editor.
+ * The position editor.
  *
- * A position is a job title plus a checklist. Ticking a box writes a row in
- * `position_permissions`, which is exactly what `has_capability()` reads when
- * Postgres decides whether a request is allowed — so what you see here is
- * what the database will enforce, not a parallel UI-only model.
+ * Restricted to workspace owners and members granted access by the owner.
+ * Members can ONLY control positions and permissions of people who report to them.
+ * Higher-level positions and managers' positions are read-only.
  */
 export function PositionsEditor({
   workspaceId,
   caps,
+  currentUserId,
+  isOwner = false,
+  canViewPositions = false,
 }: {
   workspaceId: string
   caps: Grants
+  currentUserId?: string
+  isOwner?: boolean
+  canViewPositions?: boolean
 }) {
+  const { data: members } = useMembers(workspaceId)
   const { data: positions, isLoading } = usePositions(workspaceId)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [editingPosition, setEditingPosition] = React.useState<Position | null>(null)
   const [duplicatingPosition, setDuplicatingPosition] = React.useState<Position | null>(null)
   const [deleting, setDeleting] = React.useState<Position | null>(null)
 
-  const editable = can.managePositions(caps)
+  const editable = can.managePositions(caps) || isOwner
   const deletePosition = useDeletePosition(workspaceId)
 
   const existingNames = React.useMemo(
     () => positions?.map((p) => p.name) ?? [],
     [positions]
   )
+
+  if (!isOwner && !canViewPositions) {
+    return null
+  }
 
   if (isLoading) {
     return (
@@ -87,6 +99,17 @@ export function PositionsEditor({
 
   return (
     <div className="space-y-4">
+      {!isOwner ? (
+        <div className="flex items-center gap-2.5 rounded-lg border border-primary/20 bg-primary-subtle/30 px-3.5 py-2.5 text-xs text-muted-foreground">
+          <Shield className="size-4 shrink-0 text-primary" aria-hidden />
+          <span>
+            <strong>Reporting hierarchy active:</strong> You can only edit or change permissions
+            for positions held by people who report directly or indirectly to you. Positions of
+            higher-level management, your managers, or peers are read-only.
+          </span>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Positions are how your company describes itself — Scrum Master,
@@ -118,17 +141,29 @@ export function PositionsEditor({
         />
       ) : (
         <div className="space-y-3">
-          {positions.map((position) => (
-            <PositionCard
-              key={position.id}
-              position={position}
-              workspaceId={workspaceId}
-              editable={editable}
-              onEdit={() => setEditingPosition(position)}
-              onDuplicate={() => setDuplicatingPosition(position)}
-              onDelete={() => setDeleting(position)}
-            />
-          ))}
+          {positions.map((position) => {
+            const isControllable = canControlPosition(
+              currentUserId ?? '',
+              position,
+              members ?? [],
+              Boolean(isOwner)
+            )
+
+            return (
+              <PositionCard
+                key={position.id}
+                position={position}
+                workspaceId={workspaceId}
+                editable={editable}
+                isControllable={isControllable}
+                isOwner={isOwner}
+                caps={caps}
+                onEdit={() => setEditingPosition(position)}
+                onDuplicate={() => setDuplicatingPosition(position)}
+                onDelete={() => setDeleting(position)}
+              />
+            )
+          })}
         </div>
       )}
 
@@ -137,6 +172,8 @@ export function PositionsEditor({
         existingNames={existingNames}
         open={createOpen}
         onOpenChange={setCreateOpen}
+        caps={caps}
+        isOwner={isOwner}
       />
 
       <EditPositionDialog
@@ -191,6 +228,9 @@ function PositionCard({
   position,
   workspaceId,
   editable,
+  isControllable = true,
+  isOwner = false,
+  caps,
   onEdit,
   onDuplicate,
   onDelete,
@@ -198,11 +238,15 @@ function PositionCard({
   position: Position
   workspaceId: string
   editable: boolean
+  isControllable?: boolean
+  isOwner?: boolean
+  caps?: Grants
   onEdit: () => void
   onDuplicate: () => void
   onDelete: () => void
 }) {
   const setCapabilities = useSetPositionCapabilities(workspaceId)
+  const canEditCard = editable && (isOwner || isControllable)
 
   const [draft, setDraft] = React.useState<Set<Capability>>(
     () => new Set(position.capabilities)
@@ -236,7 +280,7 @@ function PositionCard({
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            {editable ? (
+            {canEditCard ? (
               <button
                 type="button"
                 onClick={onEdit}
@@ -257,6 +301,12 @@ function PositionCard({
             ) : (
               <Badge variant="primary">Custom</Badge>
             )}
+            {!isControllable && !isOwner ? (
+              <Badge variant="neutral" className="gap-1 text-2xs text-muted-foreground">
+                <Shield className="size-2.5" />
+                Higher-level (Read-only)
+              </Badge>
+            ) : null}
             <Badge variant="neutral">
               <Users className="size-2.5" aria-hidden />
               {position.member_count ?? 0}
@@ -267,7 +317,7 @@ function PositionCard({
           ) : null}
         </div>
 
-        {editable ? (
+        {canEditCard ? (
           <div className="flex shrink-0 items-center gap-1.5">
             <Button
               variant="ghost"
@@ -324,18 +374,26 @@ function PositionCard({
                 <div className="space-y-1.5">
                   {entries.map((meta) => {
                     const checked = draft.has(meta.key)
+                    // Member cannot grant permissions they do not possess
+                    const canGrant = isOwner || !caps || caps.has(meta.key)
+                    const canToggle = canEditCard && canGrant
+
                     return (
                       <label
                         key={meta.key}
-                        title={meta.description}
+                        title={
+                          !canGrant
+                            ? 'You cannot grant a capability you do not hold'
+                            : meta.description
+                        }
                         className={cn(
                           'flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 text-xs transition-colors',
-                          editable ? 'hover:bg-muted/60' : 'cursor-default'
+                          canToggle ? 'hover:bg-muted/60' : 'cursor-default opacity-60'
                         )}
                       >
                         <Checkbox
                           checked={checked}
-                          disabled={!editable}
+                          disabled={!canToggle}
                           onCheckedChange={(value) => toggle(meta.key, Boolean(value))}
                           className="mt-px"
                         />
@@ -402,11 +460,15 @@ function CreatePositionDialog({
   existingNames = [],
   open,
   onOpenChange,
+  caps,
+  isOwner = false,
 }: {
   workspaceId: string
   existingNames?: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  caps?: Grants
+  isOwner?: boolean
 }) {
   const createPosition = useCreatePosition(workspaceId)
 
@@ -526,27 +588,38 @@ function CreatePositionDialog({
                     {group}
                   </legend>
                   <div className="space-y-1.5">
-                    {CAPABILITY_META.filter((meta) => meta.group === group).map((meta) => (
-                      <label
-                        key={meta.key}
-                        title={meta.description}
-                        className="flex cursor-pointer items-start gap-2 text-xs"
-                      >
-                        <Checkbox
-                          checked={selected.has(meta.key)}
-                          onCheckedChange={(value) =>
-                            setSelected((current) => {
-                              const next = new Set(current)
-                              if (value) next.add(meta.key)
-                              else next.delete(meta.key)
-                              return next
-                            })
+                    {CAPABILITY_META.filter((meta) => meta.group === group).map((meta) => {
+                      const canGrant = isOwner || !caps || caps.has(meta.key)
+                      return (
+                        <label
+                          key={meta.key}
+                          title={
+                            !canGrant
+                              ? 'You cannot grant a capability you do not hold'
+                              : meta.description
                           }
-                          className="mt-px"
-                        />
-                        <span className="leading-snug">{meta.label}</span>
-                      </label>
-                    ))}
+                          className={cn(
+                            'flex cursor-pointer items-start gap-2 text-xs',
+                            !canGrant && 'cursor-not-allowed opacity-50'
+                          )}
+                        >
+                          <Checkbox
+                            checked={selected.has(meta.key)}
+                            disabled={!canGrant}
+                            onCheckedChange={(value) =>
+                              setSelected((current) => {
+                                const next = new Set(current)
+                                if (value) next.add(meta.key)
+                                else next.delete(meta.key)
+                                return next
+                              })
+                            }
+                            className="mt-px"
+                          />
+                          <span className="leading-snug">{meta.label}</span>
+                        </label>
+                      )
+                    })}
                   </div>
                 </fieldset>
               ))}

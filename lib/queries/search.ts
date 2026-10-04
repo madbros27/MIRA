@@ -46,7 +46,8 @@ export function useSavedFilters(workspaceId?: string) {
         .select('*')
         .eq('workspace_id', workspaceId!)
         .order('created_at')
-      return unwrap(result) as unknown as SavedFilter[]
+      const rows = unwrap(result) as unknown as SavedFilter[]
+      return rows.filter((filter) => filter.name !== '__mira_team_access__')
     },
     staleTime: 60_000,
   })
