@@ -1,6 +1,7 @@
 'use client'
 
 import { Lock, ShieldCheck } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
 import { InvitationsPanel } from '@/components/team/invitations-panel'
@@ -24,7 +25,10 @@ import { useMembers, usePositions } from '@/lib/queries/workspaces'
  * view access to specific positions or individual members. Members with access
  * can only manage positions and permissions of people who report to them.
  */
-export default function TeamPage() {
+function TeamPageContent() {
+  const searchParams = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+
   const { workspaceId, workspace, caps, userId, isOwner } = useWorkspaceContext()
   const { data: members } = useMembers(workspaceId)
   const { data: positions } = usePositions(workspaceId)
@@ -57,12 +61,15 @@ export default function TeamPage() {
   const userChangedTabRef = React.useRef(false)
 
   React.useEffect(() => {
-    if (!userChangedTabRef.current) {
+    if (requestedTab && availableTabs.includes(requestedTab)) {
+      setTab(requestedTab)
+      userChangedTabRef.current = true
+    } else if (!userChangedTabRef.current) {
       setTab(defaultTab)
     } else if (!availableTabs.includes(tab)) {
       setTab(defaultTab)
     }
-  }, [availableTabs, defaultTab, tab])
+  }, [availableTabs, defaultTab, requestedTab, tab])
 
   const handleTabChange = (value: string) => {
     userChangedTabRef.current = true
@@ -170,5 +177,13 @@ export default function TeamPage() {
         />
       ) : null}
     </div>
+  )
+}
+
+export default function TeamPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <TeamPageContent />
+    </React.Suspense>
   )
 }
